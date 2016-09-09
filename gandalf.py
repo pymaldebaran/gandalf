@@ -11,9 +11,6 @@ animal" who gets Ross and Chandler in different crazy situations on nights out.
 # For debugging Telegram message
 import argparse
 
-# Used to wait
-import time
-
 # For debugging Telegram message
 from pprint import pprint
 
@@ -97,12 +94,7 @@ def main():
         botusername=USERNAME))
 
     # Receive messages
-    bot.message_loop(handle_message)
-    print('Listening ...')
-
-    # Keep the program running.
-    while 1:
-        time.sleep(10)
+    bot.message_loop(handle_message, run_forever='Listening ...')
 
 
 if __name__ == '__main__':
