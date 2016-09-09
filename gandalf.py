@@ -93,6 +93,7 @@ class Planning:
     """Represent a user created planning"""
     def __init__(self, title):
         self.title = title
+        self.status = 'under construction'
 
 
 
@@ -160,7 +161,10 @@ def on_chat_message(msg):
     # /plannings command
     elif is_command(text, '/plannings'):
         planning_list = '\n\n'.join(
-            ['*{num}*. *{title}*'.format(num=num+1, title=p.title) for num, p in enumerate(plannings)])
+            ['*{num}*. *{title}* - _{status}_'.format(
+                num=num+1, title=p.title, status=p.status)
+            for num, p in enumerate(plannings)])
+
         reply = CHAT_MSG['plannings_answer'].format(
             nb_plannings=len(plannings),
             planning_list=planning_list)
