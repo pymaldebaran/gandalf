@@ -50,6 +50,10 @@ CHAT_MSG = {
         'You want to create a planning named *{title}*. Send me a description'
         'or a question to ask to the participant. '
         '/cancel to abort creation.',
+    'new_error_answer':
+        'Sorry to create a planning you have give a title after the /new '
+        'command. Like this :\n\n'
+        '/new _My fancy planning title_',
     'description_answer':
         'Creating new planning:\n'
         '*{title}*\n'
@@ -105,6 +109,12 @@ def on_chat_message(msg):
     elif len(text.strip()) > 0 and text.split()[0] == '/new':
         # Retrieve the title of the planning
         command, _, title = text.lstrip().partition(' ')
+
+        # The user must provide a title
+        if title == '':
+            bot.sendMessage(chat_id, CHAT_MSG['new_error_answer'],
+                parse_mode='Markdown')
+            return
 
         # Send the answer
         reply = CHAT_MSG['new_answer'].format(title=title)
