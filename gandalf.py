@@ -40,6 +40,9 @@ CHAT_MSG = {
         'planning here, then publish it to groups or send it to individual '
         'friends.\n\n'
         'Send /plannings to manage your existing plannings.',
+    'generic_answer':
+        'Sorry I did not understand... try /help to see how you should talk '
+        'to me.',
     'new_answer':
         'You want to create a planning named *{title}*. Send me a description'
         'or a question to ask to the participant. '
@@ -73,34 +76,30 @@ OPTION_SHORT = '{description} - 👥 {nb_participant}'
 def handle_message(msg):
     """React the the reception of a Telegram message."""
     pprint(msg)
+    sender_id = msg['from']['id']
+    bot.sendMessage(sender_id, CHAT_MSG['generic_answer'])
 
 
-def main():
-    """Launch the bot."""
-    # Parse the arguments
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "token",
-        help="token used to connect to the Telegram Bot API")
-    args = parser.parse_args()
-    TOKEN = args.token
+# Parse the arguments
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "token",
+    help="token used to connect to the Telegram Bot API")
+args = parser.parse_args()
+TOKEN = args.token
 
-    bot = telepot.Bot(TOKEN)
+bot = telepot.Bot(TOKEN)
 
-    # Get the bot info
-    me = bot.getMe()
-    NAME = me["first_name"]
-    USERNAME = me["username"]
-    print(LOG_MSG['greetings'].format(
-        botname=NAME,
-        botusername=USERNAME))
+# Get the bot info
+me = bot.getMe()
+NAME = me["first_name"]
+USERNAME = me["username"]
+print(LOG_MSG['greetings'].format(
+    botname=NAME,
+    botusername=USERNAME))
 
-    # Receive messages
-    try:
-        bot.message_loop(handle_message, run_forever='Listening ...')
-    except KeyboardInterrupt:
-        print(LOG_MSG['goodbye'])
-
-
-if __name__ == '__main__':
-    main()
+# Receive messages
+try:
+    bot.message_loop(handle_message, run_forever='Listening ...')
+except KeyboardInterrupt:
+    print(LOG_MSG['goodbye'])
