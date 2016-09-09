@@ -68,6 +68,9 @@ CHAT_MSG = {
         'to your friends in a private message. To do this, tap the button '
         'below or start your message in any other chat with @{botusername} '
         'and select one of your polls to send.',
+    'plannings_answer':
+        'You have currently {nb_plannings} plannings:\n\n'
+        '{planning_list}',
     'planning_recap':
         '*{title}*\n'
         '_{description}_\n\n'
@@ -81,6 +84,9 @@ OPTION_SHORT = '{description} - 👥 {nb_participant}'
 
 # Global variable to store the bot
 bot = None
+
+# Global variable to store the plannings
+plannings = []
 
 
 def is_command(text, cmd):
@@ -138,8 +144,14 @@ def on_chat_message(msg):
         # Send the answer
         reply = CHAT_MSG['new_answer'].format(title=title)
         bot.sendMessage(chat_id, reply, parse_mode='Markdown')
+    # /plannings command
+    elif is_command(text, '/plannings'):
+        reply = CHAT_MSG['plannings_answer'].format(
+            nb_plannings=len(plannings),
+            planning_list=plannings)
+        bot.sendMessage(chat_id, reply, parse_mode='Markdown')
+    # Not a command or not a recognized one
     else:
-        # Not a command or not a recognized one
         bot.sendMessage(chat_id, CHAT_MSG['dont_understand'])
 
 
