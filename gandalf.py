@@ -40,6 +40,9 @@ CHAT_MSG = {
         'planning here, then publish it to groups or send it to individual '
         'friends.\n\n'
         'Send /plannings to manage your existing plannings.',
+    'generic_answer':
+        'Sorry I did not understand... try /help to see how you should talk '
+        'to me.',
     'new_answer':
         'You want to create a planning named *{title}*. Send me a description'
         'or a question to ask to the participant. '
@@ -69,14 +72,24 @@ OPTION_FULL = '{description} - 👥 {nb_participant}\n'\
               '{participants}'
 OPTION_SHORT = '{description} - 👥 {nb_participant}'
 
+# Global variable to store the bot
+bot = None
+
 
 def handle_message(msg):
     """React the the reception of a Telegram message."""
+    assert bot is not None
+
     pprint(msg)
+    sender_id = msg['from']['id']
+    bot.sendMessage(sender_id, CHAT_MSG['generic_answer'])
 
 
 def main():
-    """Launch the bot."""
+    """Starts the bot and launch the listenning loop."""
+    # We need write access to the global bot
+    global bot
+
     # Parse the arguments
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -85,6 +98,7 @@ def main():
     args = parser.parse_args()
     TOKEN = args.token
 
+    # Initialise the bot global variable
     bot = telepot.Bot(TOKEN)
 
     # Get the bot info
