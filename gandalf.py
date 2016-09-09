@@ -89,6 +89,13 @@ bot = None
 plannings = []
 
 
+class Planning:
+    """Represent a user created planning"""
+    def __init__(self, title):
+        self.title = title
+
+
+
 def is_command(text, cmd):
     """Analyse a string to determine if it is a command message corresponding
     to the provided cmd parameter.
@@ -111,6 +118,9 @@ def is_command(text, cmd):
 def on_chat_message(msg):
     """React the the reception of a Telegram message."""
     assert bot is not None
+
+    # We need write access to the plannings global variables
+    global plannings
 
     # Raw printing of the message received
     pprint(msg)
@@ -141,14 +151,19 @@ def on_chat_message(msg):
                 parse_mode='Markdown')
             return
 
+        # Create a new planning
+        plannings.append(Planning(title))
+
         # Send the answer
         reply = CHAT_MSG['new_answer'].format(title=title)
         bot.sendMessage(chat_id, reply, parse_mode='Markdown')
     # /plannings command
     elif is_command(text, '/plannings'):
+        planning_list = '\n\n'.join(
+            ['*{num}*. *{title}*'.format(num=num+1, title=p.title) for num, p in enumerate(plannings)])
         reply = CHAT_MSG['plannings_answer'].format(
             nb_plannings=len(plannings),
-            planning_list=plannings)
+            planning_list=planning_list)
         bot.sendMessage(chat_id, reply, parse_mode='Markdown')
     # Not a command or not a recognized one
     else:
