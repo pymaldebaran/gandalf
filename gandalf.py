@@ -39,7 +39,10 @@ CHAT_MSG = {
         'This bot will help you create planings. Use /new to create a '
         'planning here, then publish it to groups or send it to individual '
         'friends.\n\n'
-        'Send /plannings to manage your existing plannings.',
+        'You can control me by sending these commands:\n\n'
+        '/new - create a new planning\n'
+        '/plannings - manage your existing plannings.\n'
+        '/help - display this help',
     'generic_answer':
         'Sorry I did not understand... try /help to see how you should talk '
         'to me.',
@@ -80,9 +83,17 @@ def handle_message(msg):
     """React the the reception of a Telegram message."""
     assert bot is not None
 
+    # Raw printing of the message received
     pprint(msg)
+
+    # Retreive info about the message
+    text = msg['text']
     sender_id = msg['from']['id']
-    bot.sendMessage(sender_id, CHAT_MSG['generic_answer'])
+
+    if len(text.strip()) > 0 and text.split()[0] == '/help':
+        bot.sendMessage(sender_id, CHAT_MSG['help_answer'])
+    else:
+        bot.sendMessage(sender_id, CHAT_MSG['generic_answer'])
 
 
 def main():
@@ -111,6 +122,7 @@ def main():
 
     # Receive messages
     try:
+        # TODO handle only text messages
         bot.message_loop(handle_message, run_forever='Listening ...')
     except KeyboardInterrupt:
         print(LOG_MSG['goodbye'])
