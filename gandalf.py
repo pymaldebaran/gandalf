@@ -86,7 +86,7 @@ def handle_message(msg):
 
 
 def main():
-    """Starts the bot and launch the listenning loop."""
+    """Start the bot and launch the listenning loop."""
     # We need write access to the global bot
     global bot
 
