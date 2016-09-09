@@ -132,7 +132,9 @@ def main():
     # Receive messages
     try:
         # TODO handle only text messages
-        bot.message_loop({'chat': on_chat_message}, run_forever='Listening ...')
+        bot.message_loop(
+            {'chat': on_chat_message},
+            run_forever='Listening ...')
     except KeyboardInterrupt:
         print(LOG_MSG['goodbye'])
 
