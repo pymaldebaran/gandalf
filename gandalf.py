@@ -72,34 +72,49 @@ OPTION_FULL = '{description} - 👥 {nb_participant}\n'\
               '{participants}'
 OPTION_SHORT = '{description} - 👥 {nb_participant}'
 
+# Global variable to store the bot
+bot = None
+
 
 def handle_message(msg):
     """React the the reception of a Telegram message."""
+    assert bot is not None
+
     pprint(msg)
     sender_id = msg['from']['id']
     bot.sendMessage(sender_id, CHAT_MSG['generic_answer'])
 
 
-# Parse the arguments
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "token",
-    help="token used to connect to the Telegram Bot API")
-args = parser.parse_args()
-TOKEN = args.token
+def main():
+    """Starts the bot and launch the listenning loop."""
+    # We need write access to the global bot
+    global bot
 
-bot = telepot.Bot(TOKEN)
+    # Parse the arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "token",
+        help="token used to connect to the Telegram Bot API")
+    args = parser.parse_args()
+    TOKEN = args.token
 
-# Get the bot info
-me = bot.getMe()
-NAME = me["first_name"]
-USERNAME = me["username"]
-print(LOG_MSG['greetings'].format(
-    botname=NAME,
-    botusername=USERNAME))
+    # Initialise the bot global variable
+    bot = telepot.Bot(TOKEN)
 
-# Receive messages
-try:
-    bot.message_loop(handle_message, run_forever='Listening ...')
-except KeyboardInterrupt:
-    print(LOG_MSG['goodbye'])
+    # Get the bot info
+    me = bot.getMe()
+    NAME = me["first_name"]
+    USERNAME = me["username"]
+    print(LOG_MSG['greetings'].format(
+        botname=NAME,
+        botusername=USERNAME))
+
+    # Receive messages
+    try:
+        bot.message_loop(handle_message, run_forever='Listening ...')
+    except KeyboardInterrupt:
+        print(LOG_MSG['goodbye'])
+
+
+if __name__ == '__main__':
+    main()
