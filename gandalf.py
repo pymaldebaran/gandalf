@@ -43,7 +43,7 @@ CHAT_MSG = {
         '/new - create a new planning\n'
         '/plannings - manage your existing plannings.\n'
         '/help - display this help',
-    'generic_answer':
+    'dont_understand':
         'Sorry I did not understand... try /help to see how you should talk '
         'to me.',
     'new_answer':
@@ -79,21 +79,30 @@ OPTION_SHORT = '{description} - 👥 {nb_participant}'
 bot = None
 
 
-def handle_message(msg):
+def on_chat_message(msg):
     """React the the reception of a Telegram message."""
     assert bot is not None
 
     # Raw printing of the message received
     pprint(msg)
 
-    # Retreive info about the message
-    text = msg['text']
-    sender_id = msg['from']['id']
+    # Retreive basic information
+    content_type, _, chat_id = telepot.glance(msg)
 
+    # We only want text messages
+    if content_type != 'text':
+        bot.sendMessage(chat_id, CHAT_MSG['dont_understand'])
+        return
+
+    # Now we can extract the text...
+    text = msg['text']
+
+    # Switching according to witch command is received
     if len(text.strip()) > 0 and text.split()[0] == '/help':
-        bot.sendMessage(sender_id, CHAT_MSG['help_answer'])
+        bot.sendMessage(chat_id, CHAT_MSG['help_answer'])
     else:
-        bot.sendMessage(sender_id, CHAT_MSG['generic_answer'])
+        # Not a command or not a recognized one
+        bot.sendMessage(chat_id, CHAT_MSG['dont_understand'])
 
 
 def main():
@@ -123,7 +132,7 @@ def main():
     # Receive messages
     try:
         # TODO handle only text messages
-        bot.message_loop(handle_message, run_forever='Listening ...')
+        bot.message_loop({'chat': on_chat_message}, run_forever='Listening ...')
     except KeyboardInterrupt:
         print(LOG_MSG['goodbye'])
 
