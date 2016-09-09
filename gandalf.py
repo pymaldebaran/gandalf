@@ -83,6 +83,25 @@ OPTION_SHORT = '{description} - 👥 {nb_participant}'
 bot = None
 
 
+def is_command(text, cmd):
+    """Analyse a string to determine if it is a command message corresponding
+    to the provided cmd parameter.
+
+    This function does not check for valid number of parameters in the
+    message.
+
+    Arguments:
+    text -- a string to analyse.
+    cmd -- the command to check for. It must include the leading '/' char.
+    """
+    # cmd preconditions
+    assert cmd.strip() == cmd  # No spaces around
+    assert cmd.startswith('/')  # Leading slash included
+    assert len(cmd) > 1  # At least one char for command name
+
+    return len(text.strip()) > 0 and text.split()[0] == cmd
+
+
 def on_chat_message(msg):
     """React the the reception of a Telegram message."""
     assert bot is not None
@@ -103,10 +122,10 @@ def on_chat_message(msg):
 
     # Switching according to witch command is received
     # /help command
-    if len(text.strip()) > 0 and text.split()[0] == '/help':
+    if is_command(text, '/help'):
         bot.sendMessage(chat_id, CHAT_MSG['help_answer'])
     # /new command
-    elif len(text.strip()) > 0 and text.split()[0] == '/new':
+    elif is_command(text, '/new'):
         # Retrieve the title of the planning
         command, _, title = text.lstrip().partition(' ')
 
