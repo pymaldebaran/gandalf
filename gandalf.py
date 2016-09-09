@@ -98,8 +98,17 @@ def on_chat_message(msg):
     text = msg['text']
 
     # Switching according to witch command is received
+    # /help command
     if len(text.strip()) > 0 and text.split()[0] == '/help':
         bot.sendMessage(chat_id, CHAT_MSG['help_answer'])
+    # /new command
+    elif len(text.strip()) > 0 and text.split()[0] == '/new':
+        # Retrieve the title of the planning
+        command, _, title = text.lstrip().partition(' ')
+
+        # Send the answer
+        reply = CHAT_MSG['new_answer'].format(title=title)
+        bot.sendMessage(chat_id, reply, parse_mode='Markdown')
     else:
         # Not a command or not a recognized one
         bot.sendMessage(chat_id, CHAT_MSG['dont_understand'])
