@@ -50,6 +50,10 @@ CHAT_MSG = {
         'You want to create a planning named *{title}*. Send me a description'
         'or a question to ask to the participant. '
         '/cancel to abort creation.',
+    'new_error_answer':
+        'Sorry to create a planning you have give a title after the /new '
+        'command. Like this :\n\n'
+        '/new _My fancy planning title_',
     'description_answer':
         'Creating new planning:\n'
         '*{title}*\n'
@@ -79,6 +83,25 @@ OPTION_SHORT = '{description} - 👥 {nb_participant}'
 bot = None
 
 
+def is_command(text, cmd):
+    """Analyse a string to determine if it is a command message corresponding
+    to the provided cmd parameter.
+
+    This function does not check for valid number of parameters in the
+    message.
+
+    Arguments:
+    text -- a string to analyse.
+    cmd -- the command to check for. It must include the leading '/' char.
+    """
+    # cmd preconditions
+    assert cmd.strip() == cmd  # No spaces around
+    assert cmd.startswith('/')  # Leading slash included
+    assert len(cmd) > 1  # At least one char for command name
+
+    return len(text.strip()) > 0 and text.split()[0] == cmd
+
+
 def on_chat_message(msg):
     """React the the reception of a Telegram message."""
     assert bot is not None
@@ -98,8 +121,23 @@ def on_chat_message(msg):
     text = msg['text']
 
     # Switching according to witch command is received
-    if len(text.strip()) > 0 and text.split()[0] == '/help':
+    # /help command
+    if is_command(text, '/help'):
         bot.sendMessage(chat_id, CHAT_MSG['help_answer'])
+    # /new command
+    elif is_command(text, '/new'):
+        # Retrieve the title of the planning
+        command, _, title = text.lstrip().partition(' ')
+
+        # The user must provide a title
+        if title == '':
+            bot.sendMessage(chat_id, CHAT_MSG['new_error_answer'],
+                parse_mode='Markdown')
+            return
+
+        # Send the answer
+        reply = CHAT_MSG['new_answer'].format(title=title)
+        bot.sendMessage(chat_id, reply, parse_mode='Markdown')
     else:
         # Not a command or not a recognized one
         bot.sendMessage(chat_id, CHAT_MSG['dont_understand'])
