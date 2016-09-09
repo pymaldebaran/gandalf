@@ -30,7 +30,9 @@ __status__ = "Prototype"
 LOG_MSG = {
     'greetings':
         'My name is {botname} and you can contact me via @{botusername} and '
-        'talk to me.'
+        'talk to me.',
+    'goodbye':
+        '\nParty is over ! Time to go to bed.'
 }
 CHAT_MSG = {
     'help_answer':
@@ -94,7 +96,10 @@ def main():
         botusername=USERNAME))
 
     # Receive messages
-    bot.message_loop(handle_message, run_forever='Listening ...')
+    try:
+        bot.message_loop(handle_message, run_forever='Listening ...')
+    except KeyboardInterrupt:
+        print(LOG_MSG['goodbye'])
 
 
 if __name__ == '__main__':
