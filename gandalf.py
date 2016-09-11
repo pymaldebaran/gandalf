@@ -6,10 +6,22 @@ Telegram Bot to help create Doodle like planning.
 It's name comes from Friends character Mike "Gandalf" Ganderson seen in
 episode "The One Where They're Going To Party". He is supposedly a "party
 animal" who gets Ross and Chandler in different crazy situations on nights out.
+
+Usage:
+
+First create a database:
+# gandalf.py create
+
+Then launch the server using a Telegram Bot API Token:
+# gadalf.py serve 999999999999999999999999
+
 """
 
-# For debugging Telegram message
+# For clean access to program arguments
 import argparse
+
+# For database access snce we need data persistence
+import sqlite3
 
 # For debugging Telegram message
 from pprint import pprint
@@ -29,6 +41,8 @@ __email__ = "pym.aldebaran@gmail.com"
 __status__ = "Prototype"
 
 TIMEOUT = 60*60  # sec
+
+DATABASE_FILE = 'plannings.db'
 
 LOG_MSG = {
     'greetings':
@@ -124,9 +138,11 @@ class Planner(telepot.helper.ChatHandler):
     """Process messages to create persistent plannings."""
 
     def __init__(self, *args, **kwargs):
-        """Create a new Planner.
+        """
+        Create a new Planner.
 
-        This is implicitly called when creating a new thread."""
+        This is implicitly called when creating a new thread.
+        """
         super(Planner, self).__init__(*args, **kwargs)
         self._from = None
 
@@ -215,14 +231,13 @@ class Planner(telepot.helper.ChatHandler):
             self.sender.sendMessage(CHAT_MSG['dont_understand'])
 
 
-def main():
-    """Start the bot and launch the listenning loop."""
-    # Parse the arguments
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "token",
-        help="token used to connect to the Telegram Bot API")
-    args = parser.parse_args()
+def serve(args):
+    """
+    Start the bot and launch the listenning loop.
+
+    Arguments:
+    args -- command line arguments transmited after the "serve" command.
+    """
     TOKEN = args.token
 
     # Initialise the bot global variable
@@ -241,11 +256,57 @@ def main():
         botname=NAME,
         botusername=USERNAME))
 
-    # Receive messages
+    # Receive messages and dispatch them to the Delegates
     try:
         bot.message_loop(run_forever='Listening ...')
     except KeyboardInterrupt:
         print(LOG_MSG['goodbye'])
+
+
+def createdb(args):
+    """
+    Create an new database file containing only empty tables.
+
+    Arguments:
+    args -- command line arguments transmited after the "serve" command.
+    """
+    # TODO replace database file name constant by a command line arg
+    # Connect to the persistence database
+    conn = sqlite3.connect(DATABASE_FILE)
+    c = conn.cursor()
+
+    # Create tables
+    c.execute('''CREATE TABLE planning
+                (id INTEGER, title TEXT, status TEXT)''')
+
+    # Save (commit) the changes
+    conn.commit()
+
+    # Close the connexion to the database
+    conn.close()
+
+
+def main():
+    """Parse the command line arguments and launch the corresponding func."""
+    # create the top-level parser
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers()
+
+    # create the parser for the "serve" command
+    parser_serve = subparsers.add_parser(
+        'serve', help="listen for chats")
+    parser_serve.add_argument(
+        "token", help="token used to connect to the Telegram Bot API")
+    parser_serve.set_defaults(func=serve)
+
+    # create the parser for the "createdb" command
+    parser_createdb = subparsers.add_parser(
+        'createdb', help="create new database file")
+    parser_createdb.set_defaults(func=createdb)
+
+    # parse the args and call whatever function was selected
+    args = parser.parse_args()
+    args.func(args)
 
 
 if __name__ == '__main__':
