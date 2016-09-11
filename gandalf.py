@@ -17,6 +17,7 @@ from pprint import pprint
 # Telegram python binding
 # c.f. https://telepot.readthedocs.io/en/latest/
 import telepot
+from telepot.delegate import pave_event_space, per_chat_id, create_open
 
 __version__ = "0.1.0"
 __author__ = "Pierre-Yves Martin"
@@ -27,12 +28,18 @@ __maintainer__ = "Pierre-Yves Martin"
 __email__ = "pym.aldebaran@gmail.com"
 __status__ = "Prototype"
 
+TIMEOUT = 60*60  # sec
+
 LOG_MSG = {
     'greetings':
         'My name is {botname} and you can contact me via @{botusername} and '
         'talk to me.',
     'goodbye':
-        '\nParty is over ! Time to go to bed.'
+        '\nParty is over ! Time to go to bed.',
+    'user_greetings':
+        'Hello {userfirstname}... are you doing?',
+    'user_goodbye':
+        'Goodbye {userfirstname}... it was nice seeing you.',
 }
 CHAT_MSG = {
     'help_answer':
@@ -82,24 +89,21 @@ OPTION_FULL = '{description} - 👥 {nb_participant}\n'\
               '{participants}'
 OPTION_SHORT = '{description} - 👥 {nb_participant}'
 
-# Global variable to store the bot
-bot = None
-
 # Global variable to store the plannings
 plannings = []
 
 
 class Planning:
-    """Represent a user created planning"""
+    """Represent a user created planning."""
+
     def __init__(self, title):
+        """Create a new Planning."""
         self.title = title
         self.status = 'under construction'
 
 
-
 def is_command(text, cmd):
-    """Analyse a string to determine if it is a command message corresponding
-    to the provided cmd parameter.
+    """Analyse a string to determine if it is a peticular command message.
 
     This function does not check for valid number of parameters in the
     message.
@@ -116,69 +120,85 @@ def is_command(text, cmd):
     return len(text.strip()) > 0 and text.split()[0] == cmd
 
 
-def on_chat_message(msg):
-    """React the the reception of a Telegram message."""
-    assert bot is not None
+class Planner(telepot.helper.ChatHandler):
+    def __init__(self, *args, **kwargs):
+        super(Planner, self).__init__(*args, **kwargs)
+        self._from = None
 
-    # We need write access to the plannings global variables
-    global plannings
 
-    # Raw printing of the message received
-    pprint(msg)
+    def open(self, initial_msg, seed):
+        assert self._from is None
 
-    # Retreive basic information
-    content_type, _, chat_id = telepot.glance(msg)
+        self._from = initial_msg['from']
 
-    # We only want text messages
-    if content_type != 'text':
-        bot.sendMessage(chat_id, CHAT_MSG['dont_understand'])
-        return
+        print(LOG_MSG['user_greetings'].format(
+            userfirstname=self._from['first_name']))
 
-    # Now we can extract the text...
-    text = msg['text']
 
-    # Switching according to witch command is received
-    # /help command
-    if is_command(text, '/help'):
-        bot.sendMessage(chat_id, CHAT_MSG['help_answer'])
-    # /new command
-    elif is_command(text, '/new'):
-        # Retrieve the title of the planning
-        command, _, title = text.lstrip().partition(' ')
+    def on_close(self, ex):
+        print(LOG_MSG['user_goodbye'].format(
+            userfirstname=self._from['first_name']))
 
-        # The user must provide a title
-        if title == '':
-            bot.sendMessage(chat_id, CHAT_MSG['new_error_answer'],
-                parse_mode='Markdown')
+
+    def on_chat_message(self, msg):
+        """React the the reception of a Telegram message."""
+        # We need write access to the plannings global variables
+        global plannings
+
+        # Raw printing of the message received
+        pprint(msg)
+
+        # Retreive basic information
+        content_type, _, chat_id = telepot.glance(msg)
+
+        # We only want text messages
+        if content_type != 'text':
+            self.sender.sendMessage(CHAT_MSG['dont_understand'])
             return
 
-        # Create a new planning
-        plannings.append(Planning(title))
+        # Now we can extract the text...
+        text = msg['text']
 
-        # Send the answer
-        reply = CHAT_MSG['new_answer'].format(title=title)
-        bot.sendMessage(chat_id, reply, parse_mode='Markdown')
-    # /plannings command
-    elif is_command(text, '/plannings'):
-        planning_list = '\n\n'.join(
-            ['*{num}*. *{title}* - _{status}_'.format(
-                num=num+1, title=p.title, status=p.status)
-            for num, p in enumerate(plannings)])
+        # Switching according to witch command is received
+        # /help command
+        if is_command(text, '/help'):
+            self.sender.sendMessage(CHAT_MSG['help_answer'])
+        # /new command
+        elif is_command(text, '/new'):
+            # Retrieve the title of the planning
+            command, _, title = text.lstrip().partition(' ')
 
-        reply = CHAT_MSG['plannings_answer'].format(
-            nb_plannings=len(plannings),
-            planning_list=planning_list)
-        bot.sendMessage(chat_id, reply, parse_mode='Markdown')
-    # Not a command or not a recognized one
-    else:
-        bot.sendMessage(chat_id, CHAT_MSG['dont_understand'])
+            # The user must provide a title
+            if title == '':
+                self.sender.sendMessage(
+                    CHAT_MSG['new_error_answer'],
+                    parse_mode='Markdown')
+                return
+
+            # Create a new planning
+            plannings.append(Planning(title))
+
+            # Send the answer
+            reply = CHAT_MSG['new_answer'].format(title=title)
+            self.sender.sendMessage(reply, parse_mode='Markdown')
+        # /plannings command
+        elif is_command(text, '/plannings'):
+            planning_list = '\n\n'.join(
+                ['*{num}*. *{title}* - _{status}_'.format(
+                    num=num+1, title=p.title, status=p.status)
+                for num, p in enumerate(plannings)])
+
+            reply = CHAT_MSG['plannings_answer'].format(
+                nb_plannings=len(plannings),
+                planning_list=planning_list)
+            self.sender.sendMessage(reply, parse_mode='Markdown')
+        # Not a command or not a recognized one
+        else:
+            self.sender.sendMessage(CHAT_MSG['dont_understand'])
 
 
 def main():
     """Start the bot and launch the listenning loop."""
-    # We need write access to the global bot
-    global bot
-
     # Parse the arguments
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -188,7 +208,13 @@ def main():
     TOKEN = args.token
 
     # Initialise the bot global variable
-    bot = telepot.Bot(TOKEN)
+    # TODO handle only chat messages
+    delegation_pattern = pave_event_space()(
+        per_chat_id(),
+        create_open,
+        Planner,
+        timeout=TIMEOUT)
+    bot = telepot.DelegatorBot(TOKEN, [delegation_pattern])
 
     # Get the bot info
     me = bot.getMe()
@@ -200,10 +226,7 @@ def main():
 
     # Receive messages
     try:
-        # TODO handle only text messages
-        bot.message_loop(
-            {'chat': on_chat_message},
-            run_forever='Listening ...')
+        bot.message_loop(run_forever='Listening ...')
     except KeyboardInterrupt:
         print(LOG_MSG['goodbye'])
 
