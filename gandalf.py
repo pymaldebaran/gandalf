@@ -121,21 +121,39 @@ def is_command(text, cmd):
 
 
 class Planner(telepot.helper.ChatHandler):
+    """Process messages to create persistent plannings."""
+
     def __init__(self, *args, **kwargs):
+        """Create a new Planner.
+
+        This is implicitly called when creating a new thread."""
         super(Planner, self).__init__(*args, **kwargs)
         self._from = None
 
 
     def open(self, initial_msg, seed):
+        """Called at the 1st messag of a user."""
+        # Preconditions
         assert self._from is None
 
+        # Initialise the from attribute using the first message
         self._from = initial_msg['from']
 
+        # Some feedback for the logs
         print(LOG_MSG['user_greetings'].format(
             userfirstname=self._from['first_name']))
 
 
     def on_close(self, ex):
+        """
+        Called after timeout.
+
+        Timeout is mandatory to prevent infinity of threads to be created.
+        """
+        # Preconditions
+        assert self._from is not None
+
+        # Some feedback for the logs
         print(LOG_MSG['user_goodbye'].format(
             userfirstname=self._from['first_name']))
 
@@ -208,7 +226,6 @@ def main():
     TOKEN = args.token
 
     # Initialise the bot global variable
-    # TODO handle only chat messages
     delegation_pattern = pave_event_space()(
         per_chat_id(),
         create_open,
