@@ -231,43 +231,8 @@ class Planner(telepot.helper.ChatHandler):
         # Switching according to witch command is received
         if is_command(text, '/help'):
             self.on_command_help()
-        # /new command
         elif is_command(text, '/new'):
-            #TODO put this in a on_command_new method
-            # Retrieve the title of the planning
-            command, _, title = text.lstrip().partition(' ')
-
-            # The user must provide a title
-            if title == '':
-                self.sender.sendMessage(
-                    CHAT_MSG['new_error_answer'],
-                    parse_mode='Markdown')
-                return
-
-            # TODO remove the planning variable in favor of the database
-            # Create a new planning
-            planning = Planning(title)
-            plannings.append(planning)
-
-            # TODO move this to Planning class
-            # Get a cursor to the database
-            c = self._conn.cursor()
-
-            # Insert a new row to the database
-            c.execute("INSERT INTO plannings VALUES (?,?)",
-                (planning.title, planning.status))
-
-            # Save (commit) the changes
-            self._conn.commit()
-
-            # Some feedback in the logs
-            print(LOG_MSG['db_new_planning'].format(
-                dbfile=DATABASE_FILE,
-                title=planning.title))
-
-            # Send the answer
-            reply = CHAT_MSG['new_answer'].format(title=title)
-            self.sender.sendMessage(reply, parse_mode='Markdown')
+            self.on_command_new(text)
         # /plannings command
         elif is_command(text, '/plannings'):
             # TODO put this in a on_command_plannings method
@@ -290,6 +255,50 @@ class Planner(telepot.helper.ChatHandler):
     def on_command_help(self):
         """Handle the /help command by sending an help message."""
         self.sender.sendMessage(CHAT_MSG['help_answer'])
+
+
+    def on_command_new(self, text):
+        """
+        Handle the /new command by creating a new planning.
+
+        Arguments:
+        text -- string containing the text of the message recieved (including
+                the /new command)
+        """
+        # Retrieve the title of the planning
+        command, _, title = text.lstrip().partition(' ')
+
+        # The user must provide a title
+        if title == '':
+            self.sender.sendMessage(
+                CHAT_MSG['new_error_answer'],
+                parse_mode='Markdown')
+            return
+
+        # TODO remove the planning variable in favor of the database
+        # Create a new planning
+        planning = Planning(title)
+        plannings.append(planning)
+
+        # TODO move this to Planning class
+        # Get a cursor to the database
+        c = self._conn.cursor()
+
+        # Insert a new row to the database
+        c.execute("INSERT INTO plannings VALUES (?,?)",
+            (planning.title, planning.status))
+
+        # Save (commit) the changes
+        self._conn.commit()
+
+        # Some feedback in the logs
+        print(LOG_MSG['db_new_planning'].format(
+            dbfile=DATABASE_FILE,
+            title=planning.title))
+
+        # Send the answer
+        reply = CHAT_MSG['new_answer'].format(title=title)
+        self.sender.sendMessage(reply, parse_mode='Markdown')
 
 
 def serve(args):
