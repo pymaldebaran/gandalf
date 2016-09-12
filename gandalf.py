@@ -233,20 +233,8 @@ class Planner(telepot.helper.ChatHandler):
             self.on_command_help()
         elif is_command(text, '/new'):
             self.on_command_new(text)
-        # /plannings command
         elif is_command(text, '/plannings'):
-            # TODO put this in a on_command_plannings method
-            # TODO use only 2 string params using the planning.title syntax
-            # TODO retrieve the inf from the database
-            planning_list = '\n\n'.join(
-                ['*{num}*. *{title}* - _{status}_'.format(
-                    num=num+1, title=p.title, status=p.status)
-                for num, p in enumerate(plannings)])
-
-            reply = CHAT_MSG['plannings_answer'].format(
-                nb_plannings=len(plannings),
-                planning_list=planning_list)
-            self.sender.sendMessage(reply, parse_mode='Markdown')
+            self.on_command_plannings()
         # Not a command or not a recognized one
         else:
             self.sender.sendMessage(CHAT_MSG['dont_understand'])
@@ -298,6 +286,24 @@ class Planner(telepot.helper.ChatHandler):
 
         # Send the answer
         reply = CHAT_MSG['new_answer'].format(title=title)
+        self.sender.sendMessage(reply, parse_mode='Markdown')
+
+
+    def on_command_plannings(self):
+        """Handle the /plannings command by retreiving all plannings."""
+        # TODO use only 2 string params using the planning.title syntax
+        # TODO retrieve the inf from the database
+        # TODO put the formating in the Planning class
+        # Prepare a list of the short desc of each planning
+        planning_list = '\n\n'.join(
+            ['*{num}*. *{title}* - _{status}_'.format(
+                num=num+1, title=p.title, status=p.status)
+            for num, p in enumerate(plannings)])
+
+        # Format the reply and send it
+        reply = CHAT_MSG['plannings_answer'].format(
+            nb_plannings=len(plannings),
+            planning_list=planning_list)
         self.sender.sendMessage(reply, parse_mode='Markdown')
 
 
