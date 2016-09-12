@@ -127,6 +127,7 @@ class Planning:
 
     class Status(str, Enum):
         """Represent the different possible status for a planning."""
+
         UNDER_CONSTRUCTION = "Under construction"
         OPENED = "Opened"
         CLOSED = "Closed"
@@ -228,10 +229,8 @@ class Planner(telepot.helper.ChatHandler):
         text = msg['text']
 
         # Switching according to witch command is received
-        # /help command
         if is_command(text, '/help'):
-            #TODO put this in a on_command_help method
-            self.sender.sendMessage(CHAT_MSG['help_answer'])
+            self.on_command_help()
         # /new command
         elif is_command(text, '/new'):
             #TODO put this in a on_command_new method
@@ -286,6 +285,11 @@ class Planner(telepot.helper.ChatHandler):
         # Not a command or not a recognized one
         else:
             self.sender.sendMessage(CHAT_MSG['dont_understand'])
+
+
+    def on_command_help(self):
+        """Handle the /help command by sending an help message."""
+        self.sender.sendMessage(CHAT_MSG['help_answer'])
 
 
 def serve(args):
