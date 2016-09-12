@@ -118,9 +118,6 @@ OPTION_FULL = '{description} - 👥 {nb_participant}\n'\
               '{participants}'
 OPTION_SHORT = '{description} - 👥 {nb_participant}'
 
-# Global variable to store the plannings
-plannings = []
-
 
 class Planning:
     """Represent a user created planning."""
@@ -166,6 +163,7 @@ class Planner(telepot.helper.ChatHandler):
         This is implicitly called when creating a new thread.
         """
         super(Planner, self).__init__(*args, **kwargs)
+        # TODO check if self._from is not redondant with self.sender
         self._from = None  # User that started the chat with the bot
         self._conn = None  # Connexion to the database
 
@@ -211,9 +209,6 @@ class Planner(telepot.helper.ChatHandler):
 
     def on_chat_message(self, msg):
         """React the the reception of a Telegram message."""
-        # We need write access to the plannings global variables
-        global plannings
-
         # Raw printing of the message received
         pprint(msg)
 
@@ -253,6 +248,9 @@ class Planner(telepot.helper.ChatHandler):
         text -- string containing the text of the message recieved (including
                 the /new command)
         """
+        # Precondition
+        assert self._conn is not None
+
         # Retrieve the title of the planning
         command, _, title = text.lstrip().partition(' ')
 
@@ -266,18 +264,13 @@ class Planner(telepot.helper.ChatHandler):
         # TODO remove the planning variable in favor of the database
         # Create a new planning
         planning = Planning(title)
-        plannings.append(planning)
 
         # TODO move this to Planning class
-        # Get a cursor to the database
         c = self._conn.cursor()
-
-        # Insert a new row to the database
         c.execute("INSERT INTO plannings VALUES (?,?)",
             (planning.title, planning.status))
-
-        # Save (commit) the changes
         self._conn.commit()
+        c.close()
 
         # Some feedback in the logs
         print(LOG_MSG['db_new_planning'].format(
@@ -291,14 +284,24 @@ class Planner(telepot.helper.ChatHandler):
 
     def on_command_plannings(self):
         """Handle the /plannings command by retreiving all plannings."""
+        # Preconditions
+        assert self._conn is not None
+
+        # TODO move this to Planning class
+        # Retrieve plannings from database
+        c = self._conn.cursor()
+        c.execute('SELECT title, status FROM plannings')
+        plannings = c.fetchall()
+        c.close()
+
         # TODO use only 2 string params using the planning.title syntax
         # TODO retrieve the inf from the database
         # TODO put the formating in the Planning class
         # Prepare a list of the short desc of each planning
         planning_list = '\n\n'.join(
             ['*{num}*. *{title}* - _{status}_'.format(
-                num=num+1, title=p.title, status=p.status)
-            for num, p in enumerate(plannings)])
+                num=num+1, title=title, status=status)
+            for num, (title, status) in enumerate(plannings)])
 
         # Format the reply and send it
         reply = CHAT_MSG['plannings_answer'].format(
