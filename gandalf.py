@@ -29,6 +29,9 @@ import os.path
 # For file manipulation
 import os
 
+# Used to represent status of a planning
+from enum import Enum
+
 # For debugging Telegram message
 from pprint import pprint
 
@@ -122,13 +125,16 @@ plannings = []
 class Planning:
     """Represent a user created planning."""
 
+    class Status(str, Enum):
+        """Represent the different possible status for a planning."""
+        UNDER_CONSTRUCTION = "Under construction"
+        OPENED = "Opened"
+        CLOSED = "Closed"
+
     def __init__(self, title):
         """Create a new Planning."""
         self.title = title
-        # TODO use an enum like type instead of string
-        self.status = 'under construction'
-
-
+        self.status = Planning.Status.UNDER_CONSTRUCTION
 
 
 def is_command(text, cmd):
@@ -265,7 +271,9 @@ class Planner(telepot.helper.ChatHandler):
             self.sender.sendMessage(reply, parse_mode='Markdown')
         # /plannings command
         elif is_command(text, '/plannings'):
-            #TODO put this in a on_command_plannings method
+            # TODO put this in a on_command_plannings method
+            # TODO use only 2 string params using the planning.title syntax
+            # TODO retrieve the inf from the database
             planning_list = '\n\n'.join(
                 ['*{num}*. *{title}* - _{status}_'.format(
                     num=num+1, title=p.title, status=p.status)
