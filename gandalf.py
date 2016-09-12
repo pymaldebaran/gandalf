@@ -23,6 +23,12 @@ import argparse
 # For database access snce we need data persistence
 import sqlite3
 
+# For path manipulation
+import os.path
+
+# For file manipulation
+import os
+
 # For debugging Telegram message
 from pprint import pprint
 
@@ -54,6 +60,12 @@ LOG_MSG = {
         'Hello {userfirstname}... are you doing?',
     'user_goodbye':
         'Goodbye {userfirstname}... it was nice seeing you.',
+    'db_file_created':
+        'New database file <{dbfile}> created.',
+    'db_file_deleted':
+        'Database file <{dbfile}> already existed and was deleted.',
+    'db_new_planning':
+        'Planning "{title}" added to database file <{dbfile}>.'
 }
 CHAT_MSG = {
     'help_answer':
@@ -113,7 +125,10 @@ class Planning:
     def __init__(self, title):
         """Create a new Planning."""
         self.title = title
+        # TODO use an enum like type instead of string
         self.status = 'under construction'
+
+
 
 
 def is_command(text, cmd):
@@ -144,20 +159,29 @@ class Planner(telepot.helper.ChatHandler):
         This is implicitly called when creating a new thread.
         """
         super(Planner, self).__init__(*args, **kwargs)
-        self._from = None
+        self._from = None  # User that started the chat with the bot
+        self._conn = None  # Connexion to the database
 
 
     def open(self, initial_msg, seed):
         """Called at the 1st messag of a user."""
         # Preconditions
         assert self._from is None
+        assert self._conn is None
 
         # Initialise the from attribute using the first message
         self._from = initial_msg['from']
 
+        # Connect to the persistence database
+        self._conn = sqlite3.connect(DATABASE_FILE)
+
         # Some feedback for the logs
         print(LOG_MSG['user_greetings'].format(
             userfirstname=self._from['first_name']))
+
+        # Post condition
+        assert self._from is not None
+        assert self._conn is not None
 
 
     def on_close(self, ex):
@@ -168,6 +192,10 @@ class Planner(telepot.helper.ChatHandler):
         """
         # Preconditions
         assert self._from is not None
+        assert self._conn is not None
+
+        # Close the connexion to the database
+        self._conn.close()
 
         # Some feedback for the logs
         print(LOG_MSG['user_goodbye'].format(
@@ -196,9 +224,11 @@ class Planner(telepot.helper.ChatHandler):
         # Switching according to witch command is received
         # /help command
         if is_command(text, '/help'):
+            #TODO put this in a on_command_help method
             self.sender.sendMessage(CHAT_MSG['help_answer'])
         # /new command
         elif is_command(text, '/new'):
+            #TODO put this in a on_command_new method
             # Retrieve the title of the planning
             command, _, title = text.lstrip().partition(' ')
 
@@ -209,14 +239,33 @@ class Planner(telepot.helper.ChatHandler):
                     parse_mode='Markdown')
                 return
 
+            # TODO remove the planning variable in favor of the database
             # Create a new planning
-            plannings.append(Planning(title))
+            planning = Planning(title)
+            plannings.append(planning)
+
+            # TODO move this to Planning class
+            # Get a cursor to the database
+            c = self._conn.cursor()
+
+            # Insert a new row to the database
+            c.execute("INSERT INTO plannings VALUES (?,?)",
+                (planning.title, planning.status))
+
+            # Save (commit) the changes
+            self._conn.commit()
+
+            # Some feedback in the logs
+            print(LOG_MSG['db_new_planning'].format(
+                dbfile=DATABASE_FILE,
+                title=planning.title))
 
             # Send the answer
             reply = CHAT_MSG['new_answer'].format(title=title)
             self.sender.sendMessage(reply, parse_mode='Markdown')
         # /plannings command
         elif is_command(text, '/plannings'):
+            #TODO put this in a on_command_plannings method
             planning_list = '\n\n'.join(
                 ['*{num}*. *{title}* - _{status}_'.format(
                     num=num+1, title=p.title, status=p.status)
@@ -271,19 +320,27 @@ def createdb(args):
     args -- command line arguments transmited after the "serve" command.
     """
     # TODO replace database file name constant by a command line arg
+    # Delete the database file if it already exists
+    if os.path.exists(DATABASE_FILE):
+        os.remove(DATABASE_FILE)
+        # Some feed back in the logs
+        print(LOG_MSG['db_file_deleted'].format(dbfile=DATABASE_FILE))
+
     # Connect to the persistence database
     conn = sqlite3.connect(DATABASE_FILE)
     c = conn.cursor()
 
     # Create tables
-    c.execute('''CREATE TABLE planning
-                (id INTEGER, title TEXT, status TEXT)''')
+    c.execute("CREATE TABLE plannings (title TEXT, status TEXT)")
 
     # Save (commit) the changes
     conn.commit()
 
     # Close the connexion to the database
     conn.close()
+
+    # Some feed back in the logs
+    print(LOG_MSG['db_file_created'].format(dbfile=DATABASE_FILE))
 
 
 def main():
@@ -304,6 +361,7 @@ def main():
         'createdb', help="create new database file")
     parser_createdb.set_defaults(func=createdb)
 
+    # TODO make args a global variable for the threads to access it (read only)
     # parse the args and call whatever function was selected
     args = parser.parse_args()
     args.func(args)
