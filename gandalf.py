@@ -129,10 +129,10 @@ class Planning:
         OPENED = "Opened"
         CLOSED = "Closed"
 
-    def __init__(self, title):
+    def __init__(self, title, status):
         """Create a new Planning."""
         self.title = title
-        self.status = Planning.Status.UNDER_CONSTRUCTION
+        self.status = status
 
 
     def save_to_db(self, db_conn):
@@ -170,10 +170,14 @@ class Planning:
         # Preconditions
         assert db_conn is not None
 
+        # Retreive all the planning data from the db as tuple
         c = db_conn.cursor()
         c.execute('SELECT title, status FROM plannings')
-        plannings = c.fetchall()
+        rows = c.fetchall()
         c.close()
+
+        # Create the Planning instances
+        plannings = [Planning(title, status) for title, status in rows]
 
         return plannings
 
@@ -304,7 +308,7 @@ class Planner(telepot.helper.ChatHandler):
             return
 
         # Create a new planning
-        planning = Planning(title)
+        planning = Planning(title, Planning.Status.UNDER_CONSTRUCTION)
 
         # Save the new planning to the database
         planning.save_to_db(self._conn)
@@ -327,14 +331,12 @@ class Planner(telepot.helper.ChatHandler):
         # Retrieve plannings from database
         plannings = Planning.load_all_from_db(self._conn)
 
-        # TODO use only 2 string params using the planning.title syntax
         # TODO retrieve the inf from the database
         # TODO put the formating in the Planning class
         # Prepare a list of the short desc of each planning
         planning_list = '\n\n'.join(
-            ['*{num}*. *{title}* - _{status}_'.format(
-                num=num+1, title=title, status=status)
-            for num, (title, status) in enumerate(plannings)])
+            ['*{0}*. *{1.title}* - _{1.status}_'.format(num+1, p)
+            for num, p in enumerate(plannings)])
 
         # Format the reply and send it
         reply = CHAT_MSG['plannings_answer'].format(
