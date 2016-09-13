@@ -51,7 +51,12 @@ __status__ = "Prototype"
 
 TIMEOUT = 60*60  # sec
 
-DATABASE_FILE = 'plannings.db'
+DEFAULT_DATABASE_FILE = 'plannings.db'
+
+# Global variable used to give database file name to the threads.
+# It is initialized through the program --db argument.
+# Only serve() has write access to that variable to initialize it.
+DATABASE_FILE = None
 
 LOG_MSG = {
     'greetings':
@@ -366,7 +371,9 @@ def serve(args):
     Arguments:
     args -- command line arguments transmited after the "serve" command.
     """
-    TOKEN = args.token
+    # We need write access to the global variable database to initialise it
+    global DATABASE_FILE
+    DATABASE_FILE = args.db
 
     # Initialise the bot global variable
     delegation_pattern = pave_event_space()(
@@ -374,7 +381,7 @@ def serve(args):
         create_open,
         Planner,
         timeout=TIMEOUT)
-    bot = telepot.DelegatorBot(TOKEN, [delegation_pattern])
+    bot = telepot.DelegatorBot(args.token, [delegation_pattern])
 
     # Get the bot info
     me = bot.getMe()
@@ -398,15 +405,14 @@ def createdb(args):
     Arguments:
     args -- command line arguments transmited after the "serve" command.
     """
-    # TODO replace database file name constant by a command line arg
     # Delete the database file if it already exists
-    if os.path.exists(DATABASE_FILE):
-        os.remove(DATABASE_FILE)
+    if os.path.exists(args.db):
+        os.remove(args.db)
         # Some feed back in the logs
-        print(LOG_MSG['db_file_deleted'].format(dbfile=DATABASE_FILE))
+        print(LOG_MSG['db_file_deleted'].format(dbfile=args.db))
 
     # Connect to the persistence database
-    conn = sqlite3.connect(DATABASE_FILE)
+    conn = sqlite3.connect(args.db)
     c = conn.cursor()
 
     # Create tables
@@ -419,7 +425,7 @@ def createdb(args):
     conn.close()
 
     # Some feed back in the logs
-    print(LOG_MSG['db_file_created'].format(dbfile=DATABASE_FILE))
+    print(LOG_MSG['db_file_created'].format(dbfile=args.db))
 
 
 def main():
@@ -433,14 +439,17 @@ def main():
         'serve', help="listen for chats")
     parser_serve.add_argument(
         "token", help="token used to connect to the Telegram Bot API")
+    parser_serve.add_argument(
+        "--db", help="database file to use", default=DEFAULT_DATABASE_FILE)
     parser_serve.set_defaults(func=serve)
 
     # create the parser for the "createdb" command
     parser_createdb = subparsers.add_parser(
         'createdb', help="create new database file")
+    parser_createdb.add_argument(
+        "--db", help="database file to use", default=DEFAULT_DATABASE_FILE)
     parser_createdb.set_defaults(func=createdb)
 
-    # TODO make args a global variable for the threads to access it (read only)
     # parse the args and call whatever function was selected
     args = parser.parse_args()
     args.func(args)
