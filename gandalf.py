@@ -135,6 +135,23 @@ class Planning:
         self.status = status
 
 
+    def short_description(self, num):
+        """
+        Return a short str description of the planning.
+
+        Useful for list view of many plannings."
+
+        Arguments:
+            num -- position of the planning in the list
+
+        Returns:
+            string describing the planning prefixed by it's provided position.
+        """
+        return '*{num}*. *{planning.title}* - _{planning.status}_'.format(
+            num=num+1,
+            planning=self)
+
+
     def save_to_db(self, db_conn):
         """
         Save the Planning object to the provided database.
@@ -331,12 +348,9 @@ class Planner(telepot.helper.ChatHandler):
         # Retrieve plannings from database
         plannings = Planning.load_all_from_db(self._conn)
 
-        # TODO retrieve the inf from the database
-        # TODO put the formating in the Planning class
         # Prepare a list of the short desc of each planning
         planning_list = '\n\n'.join(
-            ['*{0}*. *{1.title}* - _{1.status}_'.format(num+1, p)
-            for num, p in enumerate(plannings)])
+            [p.short_description(num) for num, p in enumerate(plannings)])
 
         # Format the reply and send it
         reply = CHAT_MSG['plannings_answer'].format(
