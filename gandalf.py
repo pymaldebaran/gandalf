@@ -140,13 +140,42 @@ class Planning:
         Save the Planning object to the provided database.
 
         Arguments:
-        db_conn - connexion to the database where the Planning will be saved.
+            db_conn -- connexion to the database where the Planning will be
+                       saved.
         """
+        # Preconditions
+        assert db_conn is not None
+
         c = db_conn.cursor()
         c.execute("INSERT INTO plannings VALUES (?,?)",
             (self.title, self.status))
         db_conn.commit()
         c.close()
+
+
+    @staticmethod
+    def load_all_from_db(db_conn):
+        """
+        Load all the instances available in the database.
+
+        Arguments:
+            db_conn -- connexion to the database from which to load the
+                       plannings.
+
+        Returns:
+            A list of Planning instances corresponding to the one present in
+            the database. If no instance are available [] is returned.
+
+        """
+        # Preconditions
+        assert db_conn is not None
+
+        c = db_conn.cursor()
+        c.execute('SELECT title, status FROM plannings')
+        plannings = c.fetchall()
+        c.close()
+
+        return plannings
 
 
 def is_command(text, cmd):
@@ -274,11 +303,10 @@ class Planner(telepot.helper.ChatHandler):
                 parse_mode='Markdown')
             return
 
-        # TODO remove the planning variable in favor of the database
         # Create a new planning
         planning = Planning(title)
 
-        # TODO move this to Planning class
+        # Save the new planning to the database
         planning.save_to_db(self._conn)
 
         # Some feedback in the logs
@@ -296,12 +324,8 @@ class Planner(telepot.helper.ChatHandler):
         # Preconditions
         assert self._conn is not None
 
-        # TODO move this to Planning class
         # Retrieve plannings from database
-        c = self._conn.cursor()
-        c.execute('SELECT title, status FROM plannings')
-        plannings = c.fetchall()
-        c.close()
+        plannings = Planning.load_all_from_db(self._conn)
 
         # TODO use only 2 string params using the planning.title syntax
         # TODO retrieve the inf from the database
