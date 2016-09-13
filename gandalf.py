@@ -135,6 +135,20 @@ class Planning:
         self.status = Planning.Status.UNDER_CONSTRUCTION
 
 
+    def save_to_db(self, db_conn):
+        """
+        Save the Planning object to the provided database.
+
+        Arguments:
+        db_conn - connexion to the database where the Planning will be saved.
+        """
+        c = db_conn.cursor()
+        c.execute("INSERT INTO plannings VALUES (?,?)",
+            (self.title, self.status))
+        db_conn.commit()
+        c.close()
+
+
 def is_command(text, cmd):
     """Analyse a string to determine if it is a peticular command message.
 
@@ -163,7 +177,6 @@ class Planner(telepot.helper.ChatHandler):
         This is implicitly called when creating a new thread.
         """
         super(Planner, self).__init__(*args, **kwargs)
-        # TODO check if self._from is not redondant with self.sender
         self._from = None  # User that started the chat with the bot
         self._conn = None  # Connexion to the database
 
@@ -266,11 +279,7 @@ class Planner(telepot.helper.ChatHandler):
         planning = Planning(title)
 
         # TODO move this to Planning class
-        c = self._conn.cursor()
-        c.execute("INSERT INTO plannings VALUES (?,?)",
-            (planning.title, planning.status))
-        self._conn.commit()
-        c.close()
+        planning.save_to_db(self._conn)
 
         # Some feedback in the logs
         print(LOG_MSG['db_new_planning'].format(
