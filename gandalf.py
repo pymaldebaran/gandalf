@@ -95,6 +95,10 @@ CHAT_MSG = {
         'Sorry to create a planning you have give a title after the /new '
         'command. Like this :\n\n'
         '/new _My fancy planning title_',
+    'new_cancel_first_answer':
+        'Sorry but you already have a planning creation in progress.\n'
+        'You can cancel the current creation using the /cancel command or '
+        'finish it using the /done command.',
     'description_answer':
         'Creating new planning:\n'
         '*{title}*\n'
@@ -109,6 +113,12 @@ CHAT_MSG = {
         'to your friends in a private message. To do this, tap the button '
         'below or start your message in any other chat with @{botusername} '
         'and select one of your polls to send.',
+    'cancel_answer':
+        'Planning creation canceled.',
+    'cancel_error_answer':
+        'Sorry but there is no planning currently in edition. To start '
+        'creating one use the /new command. Like this:\n\n'
+        '/new _My fancy planning title_',
     'plannings_answer':
         'You have currently {nb_plannings} plannings:\n\n'
         '{planning_list}',
@@ -134,8 +144,9 @@ class Planning:
         OPENED = "Opened"
         CLOSED = "Closed"
 
-    def __init__(self, title, status):
+    def __init__(self, pl_id, title, status):
         """Create a new Planning."""
+        self.pl_id = pl_id
         self.title = title
         self.status = status
 
@@ -169,8 +180,39 @@ class Planning:
         assert db_conn is not None
 
         c = db_conn.cursor()
-        c.execute("INSERT INTO plannings VALUES (?,?)",
+        c.execute("INSERT INTO plannings(title, status) VALUES (?,?)",
             (self.title, self.status))
+        db_conn.commit()
+        c.close()
+
+
+    def remove_from_db(self, db_conn):
+        """
+        Remove the Planning object from the provided database.
+
+        Arguments:
+            db_conn -- connexion to the database from where the Planning will
+            be removed.
+
+        Exceptions:
+            If none or many plannings would have been removed from the
+            database the database AssertionError is raised.
+        """
+        # Preconditions
+        assert db_conn is not None
+        assert self.pl_id is not None
+
+        # Remove the planning from the database
+        c = db_conn.cursor()
+        c.execute('DELETE FROM plannings WHERE pl_id=?',(self.pl_id,))
+
+        # Check the results
+        assert c.rowcount != 0, "Tried to remove planning with id {id} that "\
+            "doesn't exist in database.".format(id=self.pl_id)
+        assert c.rowcount < 2, "Removed more than one planning with id {id} "\
+            "from the database.".format(id=self.pl_id)
+
+        # Once the results are checked we can commit and close cursor
         db_conn.commit()
         c.close()
 
@@ -194,14 +236,68 @@ class Planning:
 
         # Retreive all the planning data from the db as tuple
         c = db_conn.cursor()
-        c.execute('SELECT title, status FROM plannings')
+        c.execute('SELECT pl_id, title, status FROM plannings')
         rows = c.fetchall()
         c.close()
 
         # Create the Planning instances
-        plannings = [Planning(title, status) for title, status in rows]
+        plannings = [Planning(pl_id, title, status)\
+            for pl_id, title, status in rows]
 
         return plannings
+
+
+    @staticmethod
+    def load_under_construction_from_db(db_conn):
+        """
+        Load the only available under construction planning from the database.
+
+        Arguments:
+            db_conn -- connexion to the database from which to load the
+                       plannings.
+
+        Returns:
+            If a unique planning with the status "under construction" is
+            present, a correspinding Planning instance is returned.
+            If no planning with the status "under construction" is present in
+            the database, None is returned.
+
+        Exceptions:
+            If many planning with the status "under construction" are present
+            in the database AssertionError is raised.
+        """
+        # Preconditions
+        assert db_conn is not None
+
+        # Retreival from the database
+        c = db_conn.cursor()
+        c.execute('SELECT pl_id, title, status FROM plannings WHERE status=?',
+            (Planning.Status.UNDER_CONSTRUCTION,))
+        rows = c.fetchall()
+        c.close()
+
+        # If we have many instances... it's an error
+        assert len(rows) <= 1, "There should never be more than one "\
+            "planning in edition at any given time. "\
+            "{nb} have been found in the data base: {pl!r}.".format(
+                nb=len(rows),
+                pl=rows)
+
+        # Now that we are sure there's not many instances, let's return what
+        # we have found
+        if rows:
+            pl_id = rows[0][0]
+            title=rows[0][1]
+            status=rows[0][2]
+            p = Planning(pl_id, title, status)
+
+            # Postconditions
+            assert p.pl_id is not None, "A Planning instance extracted from the "\
+                "database must have an id."
+
+            return p
+        else:
+            return None
 
 
 def is_command(text, cmd):
@@ -298,6 +394,8 @@ class Planner(telepot.helper.ChatHandler):
             self.on_command_new(text)
         elif is_command(text, '/plannings'):
             self.on_command_plannings()
+        elif is_command(text, '/cancel'):
+            self.on_command_cancel()
         # Not a command or not a recognized one
         else:
             self.sender.sendMessage(CHAT_MSG['dont_understand'])
@@ -319,6 +417,11 @@ class Planner(telepot.helper.ChatHandler):
         # Precondition
         assert self._conn is not None
 
+        # First check if there is not a planning uneder construction
+        if Planning.load_under_construction_from_db(self._conn) is not None:
+            self.sender.sendMessage(CHAT_MSG['new_cancel_first_answer'])
+            return
+
         # Retrieve the title of the planning
         command, _, title = text.lstrip().partition(' ')
 
@@ -330,7 +433,7 @@ class Planner(telepot.helper.ChatHandler):
             return
 
         # Create a new planning
-        planning = Planning(title, Planning.Status.UNDER_CONSTRUCTION)
+        planning = Planning(None, title, Planning.Status.UNDER_CONSTRUCTION)
 
         # Save the new planning to the database
         planning.save_to_db(self._conn)
@@ -362,6 +465,30 @@ class Planner(telepot.helper.ChatHandler):
             nb_plannings=len(plannings),
             planning_list=planning_list)
         self.sender.sendMessage(reply, parse_mode='Markdown')
+
+
+    def on_command_cancel(self):
+        """
+        Handle the /cancel command to cancel the current planning.
+
+        This only works if there is a planning under construction i.e. after a
+        /new command and before a /done command.
+        """
+        # Preconditions
+        assert self._conn is not None
+
+        # TODO use an internal state ??? FSM-style ???
+        # Retreive the current planning if any
+        planning = Planning.load_under_construction_from_db(self._conn)
+
+        # No planning... nothing to do
+        if planning is None:
+            self.sender.sendMessage(CHAT_MSG['cancel_error_answer'])
+
+        # TODO ask a confirmation here using button
+        # Remove the planning from the database
+        planning.remove_from_db(self._conn)
+        self.sender.sendMessage(CHAT_MSG['cancel_answer'])
 
 
 def serve(args):
@@ -416,7 +543,10 @@ def createdb(args):
     c = conn.cursor()
 
     # Create tables
-    c.execute("CREATE TABLE plannings (title TEXT, status TEXT)")
+    c.execute("CREATE TABLE plannings ("
+        "pl_id INTEGER PRIMARY KEY, "
+        "title TEXT, "
+        "status TEXT)")
 
     # Save (commit) the changes
     conn.commit()
