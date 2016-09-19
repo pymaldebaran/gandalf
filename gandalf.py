@@ -104,7 +104,7 @@ CHAT_MSG = {
         '*{title}*\n'
         '_{description}_\n\n'
         'Please send me the first option for participant to join. '
-        '\cancel to abort creation.',
+        '/cancel to abort creation.',
     'option_answer':
         'Good. Feel free to had more options. '
         '/done to finish creating the planning or \cancel to abort creation.',
@@ -188,7 +188,10 @@ class Planning:
 
     def remove_from_db(self, db_conn):
         """
-        Remove the Planning object from the provided database.
+        Remove the Planning object and dependancies from the database.
+
+        Remove the Planning object and all the corresponding Option object
+        from the provided database.
 
         Arguments:
             db_conn -- connexion to the database from where the Planning will
@@ -202,11 +205,16 @@ class Planning:
         assert db_conn is not None
         assert self.pl_id is not None
 
-        # Remove the planning from the database
+        # Get a connexion to the database
         c = db_conn.cursor()
+
+        # First try to remove the option if any
+        c.execute('DELETE FROM options WHERE pl_id=?', (self.pl_id,))
+
+        # Remove the planning itself from the database
         c.execute('DELETE FROM plannings WHERE pl_id=?',(self.pl_id,))
 
-        # Check the results
+        # Check the results of the planning delete
         assert c.rowcount != 0, "Tried to remove planning with id {id} that "\
             "doesn't exist in database.".format(id=self.pl_id)
         assert c.rowcount < 2, "Removed more than one planning with id {id} "\
@@ -298,6 +306,49 @@ class Planning:
             return p
         else:
             return None
+
+
+class Option:
+    """
+    Represent a possible option for a planning.
+
+    This could be a date, an hour, a place... in fact whatevere you what the
+    attendees to select/choose in order to orgonise your planning.
+
+    It always refer to one specific and existing planning throught its id but
+    this constraint is only check when inserting the option to the database
+    because of a FOREIGN KEY constraint.
+    """
+
+    def __init__(self, pl_id, txt):
+        """
+        Create an Option instance providing all necessary information.
+
+        Arguments:
+            pl_id -- id of a planning to which the option belong.
+            txt -- free form text of the option describing what it is.
+        """
+        self.pl_id = pl_id
+        self.txt = txt
+
+
+    def save_to_db(self, db_conn):
+        """
+        Save the Option object to the provided database.
+
+        Arguments:
+            db_conn -- connexion to the database where the Planning will be
+                       saved.
+        """
+        # Preconditions
+        assert db_conn is not None
+
+        # Insert the new Option to the database
+        c = db_conn.cursor()
+        c.execute("INSERT INTO options(pl_id, txt) VALUES (?,?)",
+            (self.pl_id, self.txt))
+        db_conn.commit()
+        c.close()
 
 
 def is_command(text, cmd):
@@ -398,7 +449,7 @@ class Planner(telepot.helper.ChatHandler):
             self.on_command_cancel()
         # Not a command or not a recognized one
         else:
-            self.sender.sendMessage(CHAT_MSG['dont_understand'])
+            self.on_not_a_command(text)
 
 
     def on_command_help(self):
@@ -477,7 +528,6 @@ class Planner(telepot.helper.ChatHandler):
         # Preconditions
         assert self._conn is not None
 
-        # TODO use an internal state ??? FSM-style ???
         # Retreive the current planning if any
         planning = Planning.load_under_construction_from_db(self._conn)
 
@@ -489,6 +539,36 @@ class Planner(telepot.helper.ChatHandler):
         # Remove the planning from the database
         planning.remove_from_db(self._conn)
         self.sender.sendMessage(CHAT_MSG['cancel_answer'])
+
+
+    def on_not_a_command(self, text):
+        """
+        Handle any text message that is not a command or not a recognised one.
+
+        If called after a /new command it adds a new option to the current
+        planning.
+        Any other case trigger a "I don't understand" message.
+
+        Arguments:
+        text -- string containing the text of the message recieved.
+        """
+        # Preconditions
+        assert self._conn is not None
+
+        # Retreive the current planning if any
+        planning = Planning.load_under_construction_from_db(self._conn)
+
+        if planning is not None:
+            # We have a planning in progress... let's add the option to it !
+            opt = Option(planning.pl_id, text)
+
+            # and save the option to database
+            opt.save_to_db(self._conn)
+
+            self.sender.sendMessage(CHAT_MSG['option_answer'])
+        else:
+            # We have no planning in progress, we just can't understand the msg
+            self.sender.sendMessage(CHAT_MSG['dont_understand'])
 
 
 def serve(args):
@@ -543,10 +623,16 @@ def createdb(args):
     c = conn.cursor()
 
     # Create tables
-    c.execute("CREATE TABLE plannings ("
-        "pl_id INTEGER PRIMARY KEY, "
-        "title TEXT, "
-        "status TEXT)")
+    c.execute("""CREATE TABLE plannings (
+        pl_id INTEGER PRIMARY KEY,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL
+        )""")
+    c.execute("""CREATE TABLE options (
+        pl_id INTEGER NOT NULL,
+        txt NOT NULL,
+        FOREIGN KEY(pl_id) REFERENCES plannings(pl_id)
+        )""")
 
     # Save (commit) the changes
     conn.commit()
