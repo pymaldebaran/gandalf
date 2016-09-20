@@ -327,10 +327,7 @@ class Planning:
         # Now that we are sure there's not many instances, let's return what
         # we have found
         if rows:
-            # TODO use tuple assignement here
-            pl_id = rows[0][0]
-            title=rows[0][1]
-            status=rows[0][2]
+            pl_id, title, status = rows[0]
             p = Planning(pl_id, title, status)
 
             # Postconditions
