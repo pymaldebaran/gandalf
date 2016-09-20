@@ -107,15 +107,17 @@ CHAT_MSG = {
         '/cancel to abort creation.',
     'option_answer':
         'Good. Feel free to had more options. '
-        '/done to finish creating the planning or \cancel to abort creation.',
+        '/done to finish creating the planning or /cancel to abort creation.',
     'done_answer':
         '👍 Planning created. You can now publish it to a group or send it '
         'to your friends in a private message. To do this, tap the button '
         'below or start your message in any other chat with @{botusername} '
         'and select one of your polls to send.',
+    'done_error_answer':
+        'Sorry but you have to create at least one option for this planning.',
     'cancel_answer':
         'Planning creation canceled.',
-    'cancel_error_answer':
+    'no_current_planning_answer':
         'Sorry but there is no planning currently in edition. To start '
         'creating one use the /new command. Like this:\n\n'
         '/new _My fancy planning title_',
@@ -182,6 +184,37 @@ class Planning:
         c = db_conn.cursor()
         c.execute("INSERT INTO plannings(title, status) VALUES (?,?)",
             (self.title, self.status))
+        db_conn.commit()
+        c.close()
+
+
+    def update_to_db(self, db_conn):
+        """
+        Update the Planning object status to the provided database.
+
+        Arguments:
+            db_conn -- connexion to the database where the Planning will be
+                       saved.
+        """
+        # Preconditions
+        assert db_conn is not None
+
+        pprint(self.status)
+
+        # Get a connexion to the database
+        c = db_conn.cursor()
+
+        # Update the planning's status in the database
+        c.execute("UPDATE plannings SET status=? WHERE pl_id=?",
+            (self.status, self.pl_id))
+
+        # Check the results of the planning update consistancy
+        assert c.rowcount != 0, "Tried to update planning with id {id} that "\
+            "doesn't exist in database.".format(id=self.pl_id)
+        assert c.rowcount == 1, "Updated more than one planning with id {id} "\
+            "from the database.".format(id=self.pl_id)
+
+        # Once the results are checked we can commit and close cursor
         db_conn.commit()
         c.close()
 
@@ -294,9 +327,7 @@ class Planning:
         # Now that we are sure there's not many instances, let's return what
         # we have found
         if rows:
-            pl_id = rows[0][0]
-            title=rows[0][1]
-            status=rows[0][2]
+            pl_id, title, status = rows[0]
             p = Planning(pl_id, title, status)
 
             # Postconditions
@@ -349,6 +380,34 @@ class Option:
             (self.pl_id, self.txt))
         db_conn.commit()
         c.close()
+
+
+    @staticmethod
+    def load_all_from_planning_id_from_db(db_conn, pl_id):
+        """
+        Get all the Option instance with provided planning id from database.
+
+        Arguments:
+            db_conn -- connexion to the database where the Planning will be
+                       saved.
+            pl_id -- planning id to find
+
+        Returns:
+            A list of Option object created from the data retreived from the
+            database.
+            Empty list if no such object are found.
+        """
+        # Preconditions
+        assert db_conn is not None
+
+        # Retreival from the database
+        c = db_conn.cursor()
+        c.execute('SELECT pl_id, txt FROM options WHERE pl_id=?', (pl_id,))
+        rows = c.fetchall()
+        c.close()
+
+        # Let's build objects from those tuples
+        return [Option(my_id, my_txt) for my_id, my_txt in rows]
 
 
 def is_command(text, cmd):
@@ -447,6 +506,8 @@ class Planner(telepot.helper.ChatHandler):
             self.on_command_plannings()
         elif is_command(text, '/cancel'):
             self.on_command_cancel()
+        elif is_command(text, '/done'):
+            self.on_command_done()
         # Not a command or not a recognized one
         else:
             self.on_not_a_command(text)
@@ -533,12 +594,47 @@ class Planner(telepot.helper.ChatHandler):
 
         # No planning... nothing to do
         if planning is None:
-            self.sender.sendMessage(CHAT_MSG['cancel_error_answer'])
+            self.sender.sendMessage(CHAT_MSG['no_current_planning_answer'])
+        else:
+            # TODO ask a confirmation here using button
+            # Remove the planning from the database
+            planning.remove_from_db(self._conn)
+            self.sender.sendMessage(CHAT_MSG['cancel_answer'])
 
-        # TODO ask a confirmation here using button
-        # Remove the planning from the database
-        planning.remove_from_db(self._conn)
-        self.sender.sendMessage(CHAT_MSG['cancel_answer'])
+
+    def on_command_done(self):
+        """
+        Handle the /done command to finish the current planning.
+
+        This only works if there is a planning under construction i.e. after a
+        /new command and after the creation of at least one option for this
+        planning.
+        """
+        # Preconditions
+        assert self._conn is not None
+
+        # Retreive the current planning if any
+        planning = Planning.load_under_construction_from_db(self._conn)
+
+        # No planning... nothing to do and return
+        if planning is None:
+            self.sender.sendMessage(CHAT_MSG['no_current_planning_answer'])
+            return
+
+        # Retrievethe corresponding options
+        options = Option.load_all_from_planning_id_from_db(
+            self._conn, planning.pl_id)
+
+        # No option... ask for one and return
+        if len(options) == 0 :
+            self.sender.sendMessage(CHAT_MSG['done_error_answer'])
+            return
+
+        # Change planning state and update it in the database
+        planning.status = Planning.Status.OPENED
+        planning.update_to_db(self._conn)
+
+        self.sender.sendMessage(CHAT_MSG['done_answer'])
 
 
     def on_not_a_command(self, text):
