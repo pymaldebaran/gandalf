@@ -35,6 +35,10 @@ from enum import Enum
 # For debugging Telegram message
 from pprint import pprint
 
+# Used to launch autotests of the program
+import doctest
+import pytest
+
 # Telegram python binding
 # c.f. https://telepot.readthedocs.io/en/latest/
 import telepot
@@ -48,6 +52,15 @@ __license__ = "AGPL-3.0"
 __maintainer__ = "Pierre-Yves Martin"
 __email__ = "pym.aldebaran@gmail.com"
 __status__ = "Prototype"
+
+# unexported constasts used as pytest.main return codes
+# c.f. https://github.com/pytest-dev/pytest/blob/master/_pytest/main.py
+PYTEST_EXIT_OK = 0
+PYTEST_EXIT_TESTSFAILED = 1
+PYTEST_EXIT_INTERRUPTED = 2
+PYTEST_EXIT_INTERNALERROR = 3
+PYTEST_EXIT_USAGEERROR = 4
+PYTEST_EXIT_NOTESTSCOLLECTED = 5
 
 TIMEOUT = 60*60  # sec
 
@@ -744,6 +757,72 @@ def createdb(args):
     print(LOG_MSG['db_file_created'].format(dbfile=args.db))
 
 
+def autotest(args):
+    """
+    Execute all the test to check if the program works correctly.
+
+    The tests are:
+    *   test from the documentation of the code itself (via :mod:`doctest`
+        module). They basically check if the usage of the function has not
+        changed. This is the equivalent of doing :command:`python -m doctest -v
+        ludocore.py`.
+    *   unittest from the `tests` directory. Those test are here to check that
+        every function works as expected and that all functionnalities are ok
+        even in corner cases. They use :mod:`pytest` module.
+    *   functionnal tests that try to replicate actuel usecases. They are
+        located in `functional_test.py`. They use :mod:`pytest` module. This is
+        the equivalent of doing :command:`py.test --quiet --tb=line
+        functional_test.py`
+
+    Arguments:
+    args -- command line arguments transmited after the "serve" command.
+    """
+    # Doctests
+    print("DOCTESTS".center(80, '#'))
+    print("Tests examples from the documentation".center(80, '-'))
+    nb_fails, nb_tests = doctest.testmod(verbose=False)
+    nb_oks = nb_tests - nb_fails
+    print(nb_oks, "/", nb_tests, "tests are OK.")
+    if nb_fails > 0:
+        print("FAIL")
+        print("     To have more details about the errors you should try "
+              "the command: python -m doctest -v ludocore.py")
+    else:
+        print("SUCCESS")
+
+    # Unit tests
+    if os.path.exists("test_gandalf.py"):
+        print("UNIT TESTS".center(80, '#'))
+        print("Tests every functionnality in deep".center(80, '-'))
+        unit_result = pytest.main([
+            "--quiet",
+            "--color=no",
+            "--tb=line",
+            "test_gandalf.py"])
+        if unit_result not in (PYTEST_EXIT_OK, PYTEST_EXIT_NOTESTSCOLLECTED):
+            print("FAIL")
+            print("     To have more details about the errors you should try "
+                  "the command: py.test test_gandalf.py")
+        else:
+            print("SUCCESS")
+
+    # Functional tests
+    if os.path.exists("test_functional.py"):
+        print("FUNCTIONAL TESTS".center(80, '#'))
+        print("Tests actual real life usage and data".center(80, '-'))
+        func_result = pytest.main([
+            "--quiet",
+            "--color=no",
+            "--tb=line",
+            "test_functional.py"])
+        if func_result not in (PYTEST_EXIT_OK, PYTEST_EXIT_NOTESTSCOLLECTED):
+            print("FAIL")
+            print("     To have more details about the errors you should try "
+                  "the command: py.test test_functional.py")
+        else:
+            print("SUCCESS")
+
+
 def main():
     """Parse the command line arguments and launch the corresponding func."""
     # create the top-level parser
@@ -765,6 +844,11 @@ def main():
     parser_createdb.add_argument(
         "--db", help="database file to use", default=DEFAULT_DATABASE_FILE)
     parser_createdb.set_defaults(func=createdb)
+
+    # Create the parser for the "autotest" command
+    parser_autotest = subparsers.add_parser(
+        'autotest', help="launch all unittests for Gandalf.")
+    parser_autotest.set_defaults(func=autotest)
 
     # parse the args and call whatever function was selected
     args = parser.parse_args()
