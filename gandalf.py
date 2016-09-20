@@ -417,8 +417,12 @@ def is_command(text, cmd):
     message.
 
     Arguments:
-    text -- a string to analyse.
-    cmd -- the command to check for. It must include the leading '/' char.
+        text -- a string to analyse.
+        cmd -- the command to check for. It must include the leading '/' char.
+
+    Returns:
+        True if text starts with the cmd provided command.
+        False in all other cases
     """
     # cmd preconditions
     assert cmd.strip() == cmd  # No spaces around
