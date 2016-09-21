@@ -459,8 +459,15 @@ class Planner(telepot.helper.ChatHandler):
         self._conn = None  # Connexion to the database
 
 
-    def open(self, initial_msg, seed):
-        """Called at the 1st messag of a user."""
+    def open(self, initial_msg, seed, db=None):
+        """
+        Called at the 1st message of a user.
+
+        Arguments:
+            initial_msg -- first message recieved by the Planner
+            seed -- seed of the delegator
+            db -- database file to use (for test purpose only)
+        """
         # Preconditions
         assert self._from is None
         assert self._conn is None
@@ -468,8 +475,10 @@ class Planner(telepot.helper.ChatHandler):
         # Initialise the from attribute using the first message
         self._from = initial_msg['from']
 
+        # Use default value only if db is not set
+        db = DATABASE_FILE if not db else db
         # Connect to the persistence database
-        self._conn = sqlite3.connect(DATABASE_FILE)
+        self._conn = sqlite3.connect(db)
 
         # Some feedback for the logs
         print(LOG_MSG['user_greetings'].format(
@@ -684,24 +693,26 @@ class Planner(telepot.helper.ChatHandler):
             self.sender.sendMessage(CHAT_MSG['dont_understand'])
 
 
-def serve(args):
+def serve(token, db, **kwargs):
     """
     Start the bot and launch the listenning loop.
 
     Arguments:
-    args -- command line arguments transmited after the "serve" command.
+        token -- Telegram bot API token
+        kwargs -- other command line arguments transmited after the "serve"
+                  command.
     """
     # We need write access to the global variable database to initialise it
     global DATABASE_FILE
-    DATABASE_FILE = args.db
+    DATABASE_FILE = db
 
-    # Initialise the bot global variable
+    # Initialise the bot
     delegation_pattern = pave_event_space()(
         per_chat_id(),
         create_open,
         Planner,
         timeout=TIMEOUT)
-    bot = telepot.DelegatorBot(args.token, [delegation_pattern])
+    bot = telepot.DelegatorBot(token, [delegation_pattern])
 
     # Get the bot info
     me = bot.getMe()
@@ -718,21 +729,23 @@ def serve(args):
         print(LOG_MSG['goodbye'])
 
 
-def createdb(args):
+def createdb(db, **kwargs):
     """
     Create an new database file containing only empty tables.
 
     Arguments:
-    args -- command line arguments transmited after the "serve" command.
+        db -- database file name to use
+        kwargs -- other command line arguments transmited after the "createdb"
+                  command.
     """
     # Delete the database file if it already exists
-    if os.path.exists(args.db):
-        os.remove(args.db)
+    if os.path.exists(db):
+        os.remove(db)
         # Some feed back in the logs
-        print(LOG_MSG['db_file_deleted'].format(dbfile=args.db))
+        print(LOG_MSG['db_file_deleted'].format(dbfile=db))
 
     # Connect to the persistence database
-    conn = sqlite3.connect(args.db)
+    conn = sqlite3.connect(db)
     c = conn.cursor()
 
     # Create tables
@@ -754,10 +767,10 @@ def createdb(args):
     conn.close()
 
     # Some feed back in the logs
-    print(LOG_MSG['db_file_created'].format(dbfile=args.db))
+    print(LOG_MSG['db_file_created'].format(dbfile=db))
 
 
-def autotest(args):
+def autotest(*args, **kwargs):
     """
     Execute all the test to check if the program works correctly.
 
@@ -773,9 +786,6 @@ def autotest(args):
         located in `functional_test.py`. They use :mod:`pytest` module. This is
         the equivalent of doing :command:`py.test --quiet --tb=line
         functional_test.py`
-
-    Arguments:
-    args -- command line arguments transmited after the "serve" command.
     """
     # Doctests
     print("DOCTESTS".center(80, '#'))
@@ -852,7 +862,7 @@ def main():
 
     # parse the args and call whatever function was selected
     args = parser.parse_args()
-    args.func(args)
+    args.func(**vars(args))  # We use `vars` to convert args to a dict
 
 
 if __name__ == '__main__':
