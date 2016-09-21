@@ -6,6 +6,7 @@
 from gandalf import is_command, createdb, Planner, Planning
 
 # Unit test utils
+import pytest
 from unittest.mock import MagicMock
 
 # Used to inspect databse content
@@ -52,19 +53,24 @@ def fake_msg(txt):
     }
 
 
-def test_can_create_a_planning(tmpdir):
-    """
-    Test the simplest planning creation scenario.
-
-    Here we do not test the Telegram/Telepot specific code we directly call
-    the Planner.on_chat_message() method just as it would happen via the
-    serve() function.
-    """
+@pytest.yield_fixture()
+def init_database(tmpdir):
     # Create a database for the test
     db_test = str(tmpdir.join('test'))
     createdb(db=db_test)
+    conn = sqlite3.connect(db_test)
+    cursor = conn.cursor()
 
-    # Create a planner object to recieve messages
+    yield db_test, cursor
+
+    # Close the database and cursor
+    cursor.close()
+    conn.close()
+
+
+@pytest.fixture
+def init_planner():
+    # Create a planner object to receive messages
     seed = MagicMock(), MagicMock(), MagicMock()
     event_space = MagicMock()
     timeout = 1
@@ -72,6 +78,20 @@ def test_can_create_a_planning(tmpdir):
         seed_tuple=seed,
         event_space=event_space,
         timeout=timeout)
+
+    return seed, planner
+
+
+def test_can_create_a_planning(init_database, init_planner):
+    """
+    Test the simplest planning creation scenario.
+
+    Here we do not test the Telegram/Telepot specific code we directly call
+    the Planner.on_chat_message() method just as it would happen via the
+    serve() function.
+    """
+    db_test, cursor = init_database
+    seed, planner = init_planner
 
     # The scenario
     planner.open(
@@ -86,25 +106,58 @@ def test_can_create_a_planning(tmpdir):
     planner.on_chat_message(fake_msg("/done"))
 
     # Test the database content
-    conn = sqlite3.connect(db_test)
-    c = conn.cursor()
 
     # Plannings table
-    c.execute("SELECT title, status FROM plannings")
-    rows = c.fetchall()
+    cursor.execute("SELECT title, status FROM plannings")
+    rows = cursor.fetchall()
     assert len(rows) == 1, "Only one planning should be created."
     assert ("Fancy diner", Planning.Status.OPENED) == rows[0],\
         "Title and status should be set correctly."
 
     # Options table
-    c.execute("SELECT txt FROM options ORDER BY txt")
-    rows = c.fetchall()
+    cursor.execute("SELECT txt FROM options ORDER BY txt")
+    rows = cursor.fetchall()
     assert len(rows) == 4, "4 options should be created."
     assert ("1 Monday evening",) == rows[0], "Text should be set correctly."
     assert ("2 Tuesday evening",) == rows[1], "Text should be set correctly."
     assert ("3 Thursday evening",) == rows[2], "Text should be set correctly."
     assert ("4 Saturday evening",) == rows[3], "Text should be set correctly."
 
-    # Close the database and cursor
-    c.close()
-    conn.close()
+
+def test_can_cancel_a_planning(init_database, init_planner):
+    """
+    Test the a scenario where we start creating a planning but then cancel it.
+
+    Here we do not test the Telegram/Telepot specific code we directly call
+    the Planner.on_chat_message() method just as it would happen via the
+    serve() function.
+    """
+    db_test, cursor = init_database
+    seed, planner = init_planner
+
+    # The scenario
+    planner.open(
+        initial_msg=fake_msg("/new Fancy diner"),
+        seed=seed,
+        db=db_test)
+    planner.on_chat_message(fake_msg("/new Fancy diner"))
+    planner.on_chat_message(fake_msg("1 Monday evening"))
+    planner.on_chat_message(fake_msg("2 Tuesday evening"))
+    planner.on_chat_message(fake_msg("3 Thursday evening"))
+    planner.on_chat_message(fake_msg("4 Saturday evening"))
+    planner.on_chat_message(fake_msg("/cancel"))
+
+    # Test the database content
+    conn = sqlite3.connect(db_test)
+    c = conn.cursor()
+
+    # Plannings table
+    cursor.execute("SELECT title, status FROM plannings")
+    rows = cursor.fetchall()
+    assert len(rows) == 0, "No planning should have been created."
+
+    # Options table
+    cursor.execute("SELECT txt FROM options ORDER BY txt")
+    rows = cursor.fetchall()
+    assert len(rows) == 0, "No option should have been created."
+
