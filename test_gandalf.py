@@ -192,6 +192,30 @@ def test_send_new_command_without_title(init_planner_tester):
     assert len(rows) == 0, "No option should have been created."
 
 
+def test_send_plannings_command_without_planning(init_planner_tester):
+    """Test what happens when /new command is used without a title."""
+    db_test, cursor, planner_tester = init_planner_tester
+
+    planner_tester.send_message("/plannings")
+
+    # Test answer
+    planner_tester.planner.sender.sendMessage.call_count == 1
+    planner_tester.planner.sender.sendMessage.assert_called_with(
+        'You have currently 0 plannings:\n\n',
+        parse_mode='Markdown')
+
+    # Test the database content
+
+    # Plannings table
+    cursor.execute("SELECT title, status FROM plannings")
+    rows = cursor.fetchall()
+    assert len(rows) == 0, "No planning should be created."
+    # Options table
+    cursor.execute("SELECT txt FROM options ORDER BY txt")
+    rows = cursor.fetchall()
+    assert len(rows) == 0, "No option should have been created."
+
+
 def test_can_create_a_planning(init_planner_tester):
     """Simplest planning creation scenario."""
     db_test, cursor, planner_tester = init_planner_tester
