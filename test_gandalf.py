@@ -31,6 +31,34 @@ def test_is_command():
     assert not is_command("/fooooooo", "/foo"), "Commands with extra char does not match."
 
 
+class PlannerTester:
+    """
+    Helper class that makes the tests of Planner scenario easier.
+
+    Once initialized this object allows you to just call send_message() method
+    many times to simulate a discussion with the bot.
+    """
+
+    def __init__(self, planner, seed, db):
+        """Create a ready-to-use PlannerTester instance."""
+        self.planner = planner
+        self.seed = seed
+        self.db = db
+        self.openned = False
+
+
+    def send_message(self, txt):
+        """Encapsulate sending of message for easy test writing."""
+        if not self.openned:
+            self.planner.open(
+                initial_msg=fake_msg(txt),
+                seed=self.seed,
+                db=self.db)
+            self.openned = True
+
+        self.planner.on_chat_message(fake_msg(txt))
+
+
 def fake_msg(txt):
     """
     Helper function to create fake messages for test purpose.
@@ -53,23 +81,15 @@ def fake_msg(txt):
     }
 
 
-@pytest.yield_fixture()
-def init_database(tmpdir):
+@pytest.fixture()
+def init_planner_tester(tmpdir):
+    """Setup and Teardown for all tests about the Planner class."""
     # Create a database for the test
     db_test = str(tmpdir.join('test'))
     createdb(db=db_test)
     conn = sqlite3.connect(db_test)
     cursor = conn.cursor()
 
-    yield db_test, cursor
-
-    # Close the database and cursor
-    cursor.close()
-    conn.close()
-
-
-@pytest.fixture
-def init_planner():
     # Create a planner object to receive messages
     seed = MagicMock(), MagicMock(), MagicMock()
     event_space = MagicMock()
@@ -82,29 +102,31 @@ def init_planner():
     # We need to check if the bot answers...
     planner.sender.sendMessage = MagicMock()
 
-    return seed, planner
+    # Create easy to use planner tester
+    planner_tester = PlannerTester(planner, seed, db_test)
+
+    yield db_test, cursor, planner_tester
+
+    # Close the database and cursor
+    cursor.close()
+    conn.close()
 
 
-def test_say_anything(init_database, init_planner):
+def test_say_anything(init_planner_tester):
     """
-    Test what happens when we send whatever message to the bot without any
-    command or anything.
+    Test what happens when we send whatever message to the bot.
 
     Here we do not test the Telegram/Telepot specific code we directly call
     the Planner.on_chat_message() method just as it would happen via the
     serve() function.
     """
-    db_test, cursor = init_database
-    seed, planner = init_planner
+    db_test, cursor, planner_tester = init_planner_tester
 
-    planner.open(
-        initial_msg=fake_msg("Hello handsome ;)"),
-        seed=seed,
-        db=db_test)
-    planner.on_chat_message(fake_msg("Hello handsome ;)"))
+    planner_tester.send_message("Hello handsome ;)")
 
     # Test answer
-    planner.sender.sendMessage.assert_called_with(
+    planner_tester.planner.sender.sendMessage.call_count == 1
+    planner_tester.planner.sender.sendMessage.assert_called_with(
         'Sorry I did not understand... try /help to see how you should talk '
         'to me.')
 
@@ -121,7 +143,7 @@ def test_say_anything(init_database, init_planner):
     assert len(rows) == 0, "No option should have been created."
 
 
-def test_can_create_a_planning(init_database, init_planner):
+def test_can_create_a_planning(init_planner_tester):
     """
     Test the simplest planning creation scenario.
 
@@ -129,23 +151,18 @@ def test_can_create_a_planning(init_database, init_planner):
     the Planner.on_chat_message() method just as it would happen via the
     serve() function.
     """
-    db_test, cursor = init_database
-    seed, planner = init_planner
+    db_test, cursor, planner_tester = init_planner_tester
 
     # The scenario
-    planner.open(
-        initial_msg=fake_msg("/new Fancy diner"),
-        seed=seed,
-        db=db_test)
-    planner.on_chat_message(fake_msg("/new Fancy diner"))
-    planner.on_chat_message(fake_msg("1 Monday evening"))
-    planner.on_chat_message(fake_msg("2 Tuesday evening"))
-    planner.on_chat_message(fake_msg("3 Thursday evening"))
-    planner.on_chat_message(fake_msg("4 Saturday evening"))
-    planner.on_chat_message(fake_msg("/done"))
+    planner_tester.send_message("/new Fancy diner")
+    planner_tester.send_message("1 Monday evening")
+    planner_tester.send_message("2 Tuesday evening")
+    planner_tester.send_message("3 Thursday evening")
+    planner_tester.send_message("4 Saturday evening")
+    planner_tester.send_message("/done")
 
     # Test answers
-    planner.sender.sendMessage.call_count == 6
+    planner_tester.planner.sender.sendMessage.call_count == 6
 
     # Test the database content
 
@@ -166,7 +183,7 @@ def test_can_create_a_planning(init_database, init_planner):
     assert ("4 Saturday evening",) == rows[3], "Text should be set correctly."
 
 
-def test_can_cancel_a_planning(init_database, init_planner):
+def test_can_cancel_a_planning(init_planner_tester):
     """
     Test the a scenario where we start creating a planning but then cancel it.
 
@@ -174,23 +191,18 @@ def test_can_cancel_a_planning(init_database, init_planner):
     the Planner.on_chat_message() method just as it would happen via the
     serve() function.
     """
-    db_test, cursor = init_database
-    seed, planner = init_planner
+    db_test, cursor, planner_tester = init_planner_tester
 
     # The scenario
-    planner.open(
-        initial_msg=fake_msg("/new Fancy diner"),
-        seed=seed,
-        db=db_test)
-    planner.on_chat_message(fake_msg("/new Fancy diner"))
-    planner.on_chat_message(fake_msg("1 Monday evening"))
-    planner.on_chat_message(fake_msg("2 Tuesday evening"))
-    planner.on_chat_message(fake_msg("3 Thursday evening"))
-    planner.on_chat_message(fake_msg("4 Saturday evening"))
-    planner.on_chat_message(fake_msg("/cancel"))
+    planner_tester.send_message("/new Fancy diner")
+    planner_tester.send_message("1 Monday evening")
+    planner_tester.send_message("2 Tuesday evening")
+    planner_tester.send_message("3 Thursday evening")
+    planner_tester.send_message("4 Saturday evening")
+    planner_tester.send_message("/cancel")
 
     # Test answers
-    planner.sender.sendMessage.call_count == 6
+    planner_tester.planner.sender.sendMessage.call_count == 6
 
     # Test the database content
 
