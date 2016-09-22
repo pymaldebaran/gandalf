@@ -756,7 +756,7 @@ def createdb(db, **kwargs):
         )""")
     c.execute("""CREATE TABLE options (
         pl_id INTEGER NOT NULL,
-        txt NOT NULL,
+        txt TEXT NOT NULL,
         FOREIGN KEY(pl_id) REFERENCES plannings(pl_id)
         )""")
 
