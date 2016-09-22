@@ -79,7 +79,46 @@ def init_planner():
         event_space=event_space,
         timeout=timeout)
 
+    # We need to check if the bot answers...
+    planner.sender.sendMessage = MagicMock()
+
     return seed, planner
+
+
+def test_say_anything(init_database, init_planner):
+    """
+    Test what happens when we send whatever message to the bot without any
+    command or anything.
+
+    Here we do not test the Telegram/Telepot specific code we directly call
+    the Planner.on_chat_message() method just as it would happen via the
+    serve() function.
+    """
+    db_test, cursor = init_database
+    seed, planner = init_planner
+
+    planner.open(
+        initial_msg=fake_msg("Hello handsome ;)"),
+        seed=seed,
+        db=db_test)
+    planner.on_chat_message(fake_msg("Hello handsome ;)"))
+
+    # Test answer
+    planner.sender.sendMessage.assert_called_with(
+        'Sorry I did not understand... try /help to see how you should talk '
+        'to me.')
+
+    # Test the database content
+
+    # Plannings table
+    cursor.execute("SELECT title, status FROM plannings")
+    rows = cursor.fetchall()
+    assert len(rows) == 0, "No planning should have been created."
+
+    # Options table
+    cursor.execute("SELECT txt FROM options ORDER BY txt")
+    rows = cursor.fetchall()
+    assert len(rows) == 0, "No option should have been created."
 
 
 def test_can_create_a_planning(init_database, init_planner):
@@ -104,6 +143,9 @@ def test_can_create_a_planning(init_database, init_planner):
     planner.on_chat_message(fake_msg("3 Thursday evening"))
     planner.on_chat_message(fake_msg("4 Saturday evening"))
     planner.on_chat_message(fake_msg("/done"))
+
+    # Test answers
+    planner.sender.sendMessage.call_count == 6
 
     # Test the database content
 
@@ -147,9 +189,10 @@ def test_can_cancel_a_planning(init_database, init_planner):
     planner.on_chat_message(fake_msg("4 Saturday evening"))
     planner.on_chat_message(fake_msg("/cancel"))
 
+    # Test answers
+    planner.sender.sendMessage.call_count == 6
+
     # Test the database content
-    conn = sqlite3.connect(db_test)
-    c = conn.cursor()
 
     # Plannings table
     cursor.execute("SELECT title, status FROM plannings")
