@@ -137,6 +137,24 @@ def test_say_anything(init_planner_tester):
     assert len(rows) == 0, "No option should have been created."
 
 
+def test_help_command(init_planner_tester):
+    """Test what happens when using the /help command."""
+    db_test, cursor, planner_tester = init_planner_tester
+
+    planner_tester.send_message("/help")
+
+    # Test answer
+    planner_tester.planner.sender.sendMessage.call_count == 1
+    planner_tester.planner.sender.sendMessage.assert_called_with(
+        'This bot will help you create planings. Use /new to create a '
+        'planning here, then publish it to groups or send it to individual '
+        'friends.\n\n'
+        'You can control me by sending these commands:\n\n'
+        '/new - create a new planning\n'
+        '/plannings - manage your existing plannings.\n'
+        '/help - display this help')
+
+
 def test_send_new_command_starts_creation_of_a_planning(init_planner_tester):
     """Test what happens when using the /new command."""
     db_test, cursor, planner_tester = init_planner_tester
@@ -205,7 +223,7 @@ def test_send_plannings_command_without_planning(init_planner_tester):
         parse_mode='Markdown')
 
 
-def test_send_plannings_command_without_planning(init_planner_tester):
+def test_send_plannings_command_with_some_planning(init_planner_tester):
     """Test what happens when /new command is used without a title."""
     db_test, cursor, planner_tester = init_planner_tester
 
