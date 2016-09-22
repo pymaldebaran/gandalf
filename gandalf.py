@@ -751,6 +751,7 @@ def createdb(db, **kwargs):
     # Create tables
     c.execute("""CREATE TABLE plannings (
         pl_id INTEGER PRIMARY KEY,
+        user_id INTEGER,
         title TEXT NOT NULL,
         status TEXT NOT NULL
         )""")
