@@ -138,7 +138,7 @@ def test_say_anything(init_planner_tester):
 
 
 def test_send_new_command_starts_creation_of_a_planning(init_planner_tester):
-    """Test what happens when using the /new command"""
+    """Test what happens when using the /new command."""
     db_test, cursor, planner_tester = init_planner_tester
 
     planner_tester.send_message("/new Fancy diner")
@@ -156,9 +156,36 @@ def test_send_new_command_starts_creation_of_a_planning(init_planner_tester):
     # Plannings table
     cursor.execute("SELECT title, status FROM plannings")
     rows = cursor.fetchall()
+    assert len(rows) == 1, "Only one planning should be created."
     assert ("Fancy diner", Planning.Status.UNDER_CONSTRUCTION) == rows[0],\
         "Title and status should be set correctly."
 
+    # Options table
+    cursor.execute("SELECT txt FROM options ORDER BY txt")
+    rows = cursor.fetchall()
+    assert len(rows) == 0, "No option should have been created."
+
+
+def test_send_new_command_without_title(init_planner_tester):
+    """Test what happens when /new command is used without a title."""
+    db_test, cursor, planner_tester = init_planner_tester
+
+    planner_tester.send_message("/new")
+
+    # Test answer
+    planner_tester.planner.sender.sendMessage.call_count == 1
+    planner_tester.planner.sender.sendMessage.assert_called_with(
+        'Sorry to create a planning you have give a title after the /new '
+        'command. Like this :\n\n'
+        '/new _My fancy planning title_',
+        parse_mode='Markdown')
+
+    # Test the database content
+
+    # Plannings table
+    cursor.execute("SELECT title, status FROM plannings")
+    rows = cursor.fetchall()
+    assert len(rows) == 0, "No planning should be created."
     # Options table
     cursor.execute("SELECT txt FROM options ORDER BY txt")
     rows = cursor.fetchall()
