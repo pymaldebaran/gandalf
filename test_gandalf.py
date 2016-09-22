@@ -113,13 +113,7 @@ def init_planner_tester(tmpdir):
 
 
 def test_say_anything(init_planner_tester):
-    """
-    Test what happens when we send whatever message to the bot.
-
-    Here we do not test the Telegram/Telepot specific code we directly call
-    the Planner.on_chat_message() method just as it would happen via the
-    serve() function.
-    """
+    """Test what happens when we send whatever message to the bot."""
     db_test, cursor, planner_tester = init_planner_tester
 
     planner_tester.send_message("Hello handsome ;)")
@@ -143,14 +137,36 @@ def test_say_anything(init_planner_tester):
     assert len(rows) == 0, "No option should have been created."
 
 
-def test_can_create_a_planning(init_planner_tester):
-    """
-    Test the simplest planning creation scenario.
+def test_send_new_command_starts_creation_of_a_planning(init_planner_tester):
+    """Test what happens when using the /new command"""
+    db_test, cursor, planner_tester = init_planner_tester
 
-    Here we do not test the Telegram/Telepot specific code we directly call
-    the Planner.on_chat_message() method just as it would happen via the
-    serve() function.
-    """
+    planner_tester.send_message("/new Fancy diner")
+
+    # Test answer
+    planner_tester.planner.sender.sendMessage.call_count == 1
+    planner_tester.planner.sender.sendMessage.assert_called_with(
+        'You want to create a planning named *Fancy diner*. Send me a description'
+        'or a question to ask to the participant. '
+        '/cancel to abort creation.',
+        parse_mode='Markdown')
+
+    # Test the database content
+
+    # Plannings table
+    cursor.execute("SELECT title, status FROM plannings")
+    rows = cursor.fetchall()
+    assert ("Fancy diner", Planning.Status.UNDER_CONSTRUCTION) == rows[0],\
+        "Title and status should be set correctly."
+
+    # Options table
+    cursor.execute("SELECT txt FROM options ORDER BY txt")
+    rows = cursor.fetchall()
+    assert len(rows) == 0, "No option should have been created."
+
+
+def test_can_create_a_planning(init_planner_tester):
+    """Simplest planning creation scenario."""
     db_test, cursor, planner_tester = init_planner_tester
 
     # The scenario
@@ -184,13 +200,7 @@ def test_can_create_a_planning(init_planner_tester):
 
 
 def test_can_cancel_a_planning(init_planner_tester):
-    """
-    Test the a scenario where we start creating a planning but then cancel it.
-
-    Here we do not test the Telegram/Telepot specific code we directly call
-    the Planner.on_chat_message() method just as it would happen via the
-    serve() function.
-    """
+    """Scenario where we start creating a planning but then cancel it."""
     db_test, cursor, planner_tester = init_planner_tester
 
     # The scenario
