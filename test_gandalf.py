@@ -204,16 +204,26 @@ def test_send_plannings_command_without_planning(init_planner_tester):
         'You have currently 0 plannings:\n\n',
         parse_mode='Markdown')
 
-    # Test the database content
 
-    # Plannings table
-    cursor.execute("SELECT title, status FROM plannings")
-    rows = cursor.fetchall()
-    assert len(rows) == 0, "No planning should be created."
-    # Options table
-    cursor.execute("SELECT txt FROM options ORDER BY txt")
-    rows = cursor.fetchall()
-    assert len(rows) == 0, "No option should have been created."
+def test_send_plannings_command_without_planning(init_planner_tester):
+    """Test what happens when /new command is used without a title."""
+    db_test, cursor, planner_tester = init_planner_tester
+
+    planner_tester.send_message("/new Fancy diner")
+    planner_tester.send_message("1 Monday evening")
+    planner_tester.send_message("/done")
+    planner_tester.send_message("/new Crappy lunch")
+    # We reset call count to test only this call
+    planner_tester.planner.sender.sendMessage.reset_mock()
+    planner_tester.send_message("/plannings")
+
+    # Test answer
+    planner_tester.planner.sender.sendMessage.call_count == 1
+    planner_tester.planner.sender.sendMessage.assert_called_with(
+        'You have currently 2 plannings:\n\n'
+        '*1*. *Fancy diner* - _Opened_\n\n'
+        '*2*. *Crappy lunch* - _Under construction_',
+        parse_mode='Markdown')
 
 
 def test_can_create_a_planning(init_planner_tester):
