@@ -32,7 +32,7 @@ def test_is_command():
 
 
 def test_createdb(tmpdir):
-    """Test the creation of an empty database"""
+    """Test the creation of an empty database."""
     # A temp file to store the database
     db_test = str(tmpdir.join('test'))
 
@@ -91,23 +91,32 @@ class PlannerTester:
         self.openned = False
 
 
-    def send_message(self, txt):
-        """Encapsulate sending of message for easy test writing."""
+    def send_message(self, user, txt):
+        """
+        Encapsulate sending of message for easy test writing.
+
+        Arguments:
+            user -- dist describing the user sending the message.
+                    It must mimics a Telegram User description.
+            txt -- text content of the wannabe message.
+        """
         if not self.openned:
             self.planner.open(
-                initial_msg=fake_msg(txt),
+                initial_msg=fake_msg(user, txt),
                 seed=self.seed,
                 db=self.db)
             self.openned = True
 
-        self.planner.on_chat_message(fake_msg(txt))
+        self.planner.on_chat_message(fake_msg(user, txt))
 
 
-def fake_msg(txt):
+def fake_msg(user, txt):
     """
     Helper function to create fake messages for test purpose.
 
     Arguments:
+        user -- dist describing the user sending the message.
+                It must mimics a Telegram User description.
         txt -- text content of the wannabe message.
 
     Returns:
@@ -118,9 +127,7 @@ def fake_msg(txt):
             'id':1,
             'type':'text'
         },
-        'from':{
-            'first_name':'Joey'
-        },
+        'from':user,
         'text':txt
     }
 
@@ -149,7 +156,15 @@ def init_planner_tester(tmpdir):
     # Create easy to use planner tester
     planner_tester = PlannerTester(planner, seed, db_test)
 
-    yield db_test, cursor, planner_tester
+    # We need a user to send the messages
+    user = {
+        'id':1234567890,
+        'first_name':'Joey',
+        'last_name':'Tribbiani',
+        'username':'@friendsjoey'
+    }
+
+    yield db_test, cursor, planner_tester, user
 
     # Close the database and cursor
     cursor.close()
@@ -158,9 +173,9 @@ def init_planner_tester(tmpdir):
 
 def test_say_anything(init_planner_tester):
     """Test what happens when we send whatever message to the bot."""
-    db_test, cursor, planner_tester = init_planner_tester
+    db_test, cursor, planner_tester, user = init_planner_tester
 
-    planner_tester.send_message("Hello handsome ;)")
+    planner_tester.send_message(user, "Hello handsome ;)")
 
     # Test answer
     planner_tester.planner.sender.sendMessage.call_count == 1
@@ -183,9 +198,9 @@ def test_say_anything(init_planner_tester):
 
 def test_help_command(init_planner_tester):
     """Test what happens when using the /help command."""
-    db_test, cursor, planner_tester = init_planner_tester
+    db_test, cursor, planner_tester, user = init_planner_tester
 
-    planner_tester.send_message("/help")
+    planner_tester.send_message(user, "/help")
 
     # Test answer
     planner_tester.planner.sender.sendMessage.call_count == 1
@@ -201,9 +216,9 @@ def test_help_command(init_planner_tester):
 
 def test_new_command_starts_creation_of_a_planning(init_planner_tester):
     """Test what happens when using the /new command."""
-    db_test, cursor, planner_tester = init_planner_tester
+    db_test, cursor, planner_tester, user = init_planner_tester
 
-    planner_tester.send_message("/new Fancy diner")
+    planner_tester.send_message(user, "/new Fancy diner")
 
     # Test answer
     planner_tester.planner.sender.sendMessage.call_count == 1
@@ -216,11 +231,16 @@ def test_new_command_starts_creation_of_a_planning(init_planner_tester):
     # Test the database content
 
     # Plannings table
-    cursor.execute("SELECT title, status FROM plannings")
+    cursor.execute("SELECT user_id, title, status FROM plannings")
     rows = cursor.fetchall()
     assert len(rows) == 1, "Only one planning should be created."
-    assert ("Fancy diner", Planning.Status.UNDER_CONSTRUCTION) == rows[0],\
-        "Title and status should be set correctly."
+    user_id, title, status = rows[0]
+    assert user['id'] == user_id,\
+        "User id of the sender should be set correctly."
+    assert "Fancy diner" == title,\
+        "Title should be set correctly."
+    assert Planning.Status.UNDER_CONSTRUCTION == status,\
+        "Status should be set correctly."
 
     # Options table
     cursor.execute("SELECT txt FROM options ORDER BY txt")
@@ -230,9 +250,9 @@ def test_new_command_starts_creation_of_a_planning(init_planner_tester):
 
 def test_new_command_without_title(init_planner_tester):
     """Test what happens when /new command is used without a title."""
-    db_test, cursor, planner_tester = init_planner_tester
+    db_test, cursor, planner_tester, user = init_planner_tester
 
-    planner_tester.send_message("/new")
+    planner_tester.send_message(user, "/new")
 
     # Test answer
     planner_tester.planner.sender.sendMessage.call_count == 1
@@ -256,9 +276,9 @@ def test_new_command_without_title(init_planner_tester):
 
 def test_plannings_command_without_planning(init_planner_tester):
     """Test what happens when /new command is used without a title."""
-    db_test, cursor, planner_tester = init_planner_tester
+    db_test, cursor, planner_tester, user = init_planner_tester
 
-    planner_tester.send_message("/plannings")
+    planner_tester.send_message(user, "/plannings")
 
     # Test answer
     planner_tester.planner.sender.sendMessage.call_count == 1
@@ -269,15 +289,15 @@ def test_plannings_command_without_planning(init_planner_tester):
 
 def test_plannings_command_with_some_planning(init_planner_tester):
     """Test what happens when /new command is used without a title."""
-    db_test, cursor, planner_tester = init_planner_tester
+    db_test, cursor, planner_tester, user = init_planner_tester
 
-    planner_tester.send_message("/new Fancy diner")
-    planner_tester.send_message("1 Monday evening")
-    planner_tester.send_message("/done")
-    planner_tester.send_message("/new Crappy lunch")
+    planner_tester.send_message(user, "/new Fancy diner")
+    planner_tester.send_message(user, "1 Monday evening")
+    planner_tester.send_message(user, "/done")
+    planner_tester.send_message(user, "/new Crappy lunch")
     # We reset call count to test only this call
     planner_tester.planner.sender.sendMessage.reset_mock()
-    planner_tester.send_message("/plannings")
+    planner_tester.send_message(user, "/plannings")
 
     # Test answer
     planner_tester.planner.sender.sendMessage.call_count == 1
@@ -290,15 +310,15 @@ def test_plannings_command_with_some_planning(init_planner_tester):
 
 def test_can_create_a_planning(init_planner_tester):
     """Simplest planning creation scenario."""
-    db_test, cursor, planner_tester = init_planner_tester
+    db_test, cursor, planner_tester, user = init_planner_tester
 
     # The scenario
-    planner_tester.send_message("/new Fancy diner")
-    planner_tester.send_message("1 Monday evening")
-    planner_tester.send_message("2 Tuesday evening")
-    planner_tester.send_message("3 Thursday evening")
-    planner_tester.send_message("4 Saturday evening")
-    planner_tester.send_message("/done")
+    planner_tester.send_message(user, "/new Fancy diner")
+    planner_tester.send_message(user, "1 Monday evening")
+    planner_tester.send_message(user, "2 Tuesday evening")
+    planner_tester.send_message(user, "3 Thursday evening")
+    planner_tester.send_message(user, "4 Saturday evening")
+    planner_tester.send_message(user, "/done")
 
     # Test answers
     planner_tester.planner.sender.sendMessage.call_count == 6
@@ -324,15 +344,15 @@ def test_can_create_a_planning(init_planner_tester):
 
 def test_can_cancel_a_planning(init_planner_tester):
     """Scenario where we start creating a planning but then cancel it."""
-    db_test, cursor, planner_tester = init_planner_tester
+    db_test, cursor, planner_tester, user = init_planner_tester
 
     # The scenario
-    planner_tester.send_message("/new Fancy diner")
-    planner_tester.send_message("1 Monday evening")
-    planner_tester.send_message("2 Tuesday evening")
-    planner_tester.send_message("3 Thursday evening")
-    planner_tester.send_message("4 Saturday evening")
-    planner_tester.send_message("/cancel")
+    planner_tester.send_message(user, "/new Fancy diner")
+    planner_tester.send_message(user, "1 Monday evening")
+    planner_tester.send_message(user, "2 Tuesday evening")
+    planner_tester.send_message(user, "3 Thursday evening")
+    planner_tester.send_message(user, "4 Saturday evening")
+    planner_tester.send_message(user, "/cancel")
 
     # Test answers
     planner_tester.planner.sender.sendMessage.call_count == 6
