@@ -199,7 +199,7 @@ def test_help_command(init_planner_tester):
         '/help - display this help')
 
 
-def test_send_new_command_starts_creation_of_a_planning(init_planner_tester):
+def test_new_command_starts_creation_of_a_planning(init_planner_tester):
     """Test what happens when using the /new command."""
     db_test, cursor, planner_tester = init_planner_tester
 
@@ -228,7 +228,7 @@ def test_send_new_command_starts_creation_of_a_planning(init_planner_tester):
     assert len(rows) == 0, "No option should have been created."
 
 
-def test_send_new_command_without_title(init_planner_tester):
+def test_new_command_without_title(init_planner_tester):
     """Test what happens when /new command is used without a title."""
     db_test, cursor, planner_tester = init_planner_tester
 
@@ -254,7 +254,7 @@ def test_send_new_command_without_title(init_planner_tester):
     assert len(rows) == 0, "No option should have been created."
 
 
-def test_send_plannings_command_without_planning(init_planner_tester):
+def test_plannings_command_without_planning(init_planner_tester):
     """Test what happens when /new command is used without a title."""
     db_test, cursor, planner_tester = init_planner_tester
 
@@ -267,7 +267,7 @@ def test_send_plannings_command_without_planning(init_planner_tester):
         parse_mode='Markdown')
 
 
-def test_send_plannings_command_with_some_planning(init_planner_tester):
+def test_plannings_command_with_some_planning(init_planner_tester):
     """Test what happens when /new command is used without a title."""
     db_test, cursor, planner_tester = init_planner_tester
 
