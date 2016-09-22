@@ -35,6 +35,10 @@ from enum import Enum
 # For debugging Telegram message
 from pprint import pprint
 
+# Used to launch autotests of the program
+import doctest
+import pytest
+
 # Telegram python binding
 # c.f. https://telepot.readthedocs.io/en/latest/
 import telepot
@@ -48,6 +52,15 @@ __license__ = "AGPL-3.0"
 __maintainer__ = "Pierre-Yves Martin"
 __email__ = "pym.aldebaran@gmail.com"
 __status__ = "Prototype"
+
+# unexported constasts used as pytest.main return codes
+# c.f. https://github.com/pytest-dev/pytest/blob/master/_pytest/main.py
+PYTEST_EXIT_OK = 0
+PYTEST_EXIT_TESTSFAILED = 1
+PYTEST_EXIT_INTERRUPTED = 2
+PYTEST_EXIT_INTERNALERROR = 3
+PYTEST_EXIT_USAGEERROR = 4
+PYTEST_EXIT_NOTESTSCOLLECTED = 5
 
 TIMEOUT = 60*60  # sec
 
@@ -417,8 +430,12 @@ def is_command(text, cmd):
     message.
 
     Arguments:
-    text -- a string to analyse.
-    cmd -- the command to check for. It must include the leading '/' char.
+        text -- a string to analyse.
+        cmd -- the command to check for. It must include the leading '/' char.
+
+    Returns:
+        True if text starts with the cmd provided command.
+        False in all other cases
     """
     # cmd preconditions
     assert cmd.strip() == cmd  # No spaces around
@@ -442,8 +459,15 @@ class Planner(telepot.helper.ChatHandler):
         self._conn = None  # Connexion to the database
 
 
-    def open(self, initial_msg, seed):
-        """Called at the 1st messag of a user."""
+    def open(self, initial_msg, seed, db=None):
+        """
+        Called at the 1st message of a user.
+
+        Arguments:
+            initial_msg -- first message recieved by the Planner
+            seed -- seed of the delegator
+            db -- database file to use (for test purpose only)
+        """
         # Preconditions
         assert self._from is None
         assert self._conn is None
@@ -451,8 +475,10 @@ class Planner(telepot.helper.ChatHandler):
         # Initialise the from attribute using the first message
         self._from = initial_msg['from']
 
+        # Use default value only if db is not set
+        db = DATABASE_FILE if not db else db
         # Connect to the persistence database
-        self._conn = sqlite3.connect(DATABASE_FILE)
+        self._conn = sqlite3.connect(db)
 
         # Some feedback for the logs
         print(LOG_MSG['user_greetings'].format(
@@ -667,24 +693,26 @@ class Planner(telepot.helper.ChatHandler):
             self.sender.sendMessage(CHAT_MSG['dont_understand'])
 
 
-def serve(args):
+def serve(token, db, **kwargs):
     """
     Start the bot and launch the listenning loop.
 
     Arguments:
-    args -- command line arguments transmited after the "serve" command.
+        token -- Telegram bot API token
+        kwargs -- other command line arguments transmited after the "serve"
+                  command.
     """
     # We need write access to the global variable database to initialise it
     global DATABASE_FILE
-    DATABASE_FILE = args.db
+    DATABASE_FILE = db
 
-    # Initialise the bot global variable
+    # Initialise the bot
     delegation_pattern = pave_event_space()(
         per_chat_id(),
         create_open,
         Planner,
         timeout=TIMEOUT)
-    bot = telepot.DelegatorBot(args.token, [delegation_pattern])
+    bot = telepot.DelegatorBot(token, [delegation_pattern])
 
     # Get the bot info
     me = bot.getMe()
@@ -701,21 +729,23 @@ def serve(args):
         print(LOG_MSG['goodbye'])
 
 
-def createdb(args):
+def createdb(db, **kwargs):
     """
     Create an new database file containing only empty tables.
 
     Arguments:
-    args -- command line arguments transmited after the "serve" command.
+        db -- database file name to use
+        kwargs -- other command line arguments transmited after the "createdb"
+                  command.
     """
     # Delete the database file if it already exists
-    if os.path.exists(args.db):
-        os.remove(args.db)
+    if os.path.exists(db):
+        os.remove(db)
         # Some feed back in the logs
-        print(LOG_MSG['db_file_deleted'].format(dbfile=args.db))
+        print(LOG_MSG['db_file_deleted'].format(dbfile=db))
 
     # Connect to the persistence database
-    conn = sqlite3.connect(args.db)
+    conn = sqlite3.connect(db)
     c = conn.cursor()
 
     # Create tables
@@ -737,7 +767,70 @@ def createdb(args):
     conn.close()
 
     # Some feed back in the logs
-    print(LOG_MSG['db_file_created'].format(dbfile=args.db))
+    print(LOG_MSG['db_file_created'].format(dbfile=db))
+
+
+def autotest(*args, **kwargs):
+    """
+    Execute all the test to check if the program works correctly.
+
+    The tests are:
+    *   test from the documentation of the code itself (via :mod:`doctest`
+        module). They basically check if the usage of the function has not
+        changed. This is the equivalent of doing :command:`python -m doctest -v
+        ludocore.py`.
+    *   unittest from the `tests` directory. Those test are here to check that
+        every function works as expected and that all functionnalities are ok
+        even in corner cases. They use :mod:`pytest` module.
+    *   functionnal tests that try to replicate actuel usecases. They are
+        located in `functional_test.py`. They use :mod:`pytest` module. This is
+        the equivalent of doing :command:`py.test --quiet --tb=line
+        functional_test.py`
+    """
+    # Doctests
+    print("DOCTESTS".center(80, '#'))
+    print("Tests examples from the documentation".center(80, '-'))
+    nb_fails, nb_tests = doctest.testmod(verbose=False)
+    nb_oks = nb_tests - nb_fails
+    print(nb_oks, "/", nb_tests, "tests are OK.")
+    if nb_fails > 0:
+        print("FAIL")
+        print("     To have more details about the errors you should try "
+              "the command: python -m doctest -v ludocore.py")
+    else:
+        print("SUCCESS")
+
+    # Unit tests
+    if os.path.exists("test_gandalf.py"):
+        print("UNIT TESTS".center(80, '#'))
+        print("Tests every functionnality in deep".center(80, '-'))
+        unit_result = pytest.main([
+            "--quiet",
+            "--color=no",
+            "--tb=line",
+            "test_gandalf.py"])
+        if unit_result not in (PYTEST_EXIT_OK, PYTEST_EXIT_NOTESTSCOLLECTED):
+            print("FAIL")
+            print("     To have more details about the errors you should try "
+                  "the command: py.test test_gandalf.py")
+        else:
+            print("SUCCESS")
+
+    # Functional tests
+    if os.path.exists("test_functional.py"):
+        print("FUNCTIONAL TESTS".center(80, '#'))
+        print("Tests actual real life usage and data".center(80, '-'))
+        func_result = pytest.main([
+            "--quiet",
+            "--color=no",
+            "--tb=line",
+            "test_functional.py"])
+        if func_result not in (PYTEST_EXIT_OK, PYTEST_EXIT_NOTESTSCOLLECTED):
+            print("FAIL")
+            print("     To have more details about the errors you should try "
+                  "the command: py.test test_functional.py")
+        else:
+            print("SUCCESS")
 
 
 def main():
@@ -762,9 +855,14 @@ def main():
         "--db", help="database file to use", default=DEFAULT_DATABASE_FILE)
     parser_createdb.set_defaults(func=createdb)
 
+    # Create the parser for the "autotest" command
+    parser_autotest = subparsers.add_parser(
+        'autotest', help="launch all unittests for Gandalf.")
+    parser_autotest.set_defaults(func=autotest)
+
     # parse the args and call whatever function was selected
     args = parser.parse_args()
-    args.func(args)
+    args.func(**vars(args))  # We use `vars` to convert args to a dict
 
 
 if __name__ == '__main__':

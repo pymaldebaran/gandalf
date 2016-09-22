@@ -1,2 +1,8 @@
 # database files #
 *.db
+
+# python temp files
+.cache/*
+__pycache__/*
+*.pyo
+*.pyc
