@@ -343,7 +343,6 @@ def test_plannings_command_with_some_planning(init_planner_tester, users):
         parse_mode='Markdown')
 
 
-# TODO modifiy this test to check user un planning
 def test_can_create_a_planning(init_planner_tester, users):
     """Simplest planning creation scenario."""
     db_test, cursor, planner_tester = init_planner_tester

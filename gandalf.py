@@ -159,9 +159,10 @@ class Planning:
         OPENED = "Opened"
         CLOSED = "Closed"
 
-    def __init__(self, pl_id, title, status):
+    def __init__(self, pl_id, user_id, title, status):
         """Create a new Planning."""
         self.pl_id = pl_id
+        self.user_id = user_id
         self.title = title
         self.status = status
 
@@ -195,8 +196,10 @@ class Planning:
         assert db_conn is not None
 
         c = db_conn.cursor()
-        c.execute("INSERT INTO plannings(title, status) VALUES (?,?)",
-            (self.title, self.status))
+        c.execute(
+            """INSERT INTO plannings(user_id, title, status)
+                VALUES (?,?,?)""",
+            (self.user_id, self.title, self.status))
         db_conn.commit()
         c.close()
 
@@ -290,13 +293,13 @@ class Planning:
 
         # Retreive all the planning data from the db as tuple
         c = db_conn.cursor()
-        c.execute('SELECT pl_id, title, status FROM plannings')
+        c.execute('SELECT * FROM plannings')
         rows = c.fetchall()
         c.close()
 
         # Create the Planning instances
-        plannings = [Planning(pl_id, title, status)\
-            for pl_id, title, status in rows]
+        plannings = [Planning(pl_id, user_id, title, status)\
+            for pl_id, user_id, title, status in rows]
 
         return plannings
 
@@ -325,7 +328,7 @@ class Planning:
 
         # Retreival from the database
         c = db_conn.cursor()
-        c.execute('SELECT pl_id, title, status FROM plannings WHERE status=?',
+        c.execute('SELECT * FROM plannings WHERE status=?',
             (Planning.Status.UNDER_CONSTRUCTION,))
         rows = c.fetchall()
         c.close()
@@ -340,8 +343,8 @@ class Planning:
         # Now that we are sure there's not many instances, let's return what
         # we have found
         if rows:
-            pl_id, title, status = rows[0]
-            p = Planning(pl_id, title, status)
+            pl_id, user_id, title, status = rows[0]
+            p = Planning(pl_id, user_id, title, status)
 
             # Postconditions
             assert p.pl_id is not None, "A Planning instance extracted from the "\
@@ -415,7 +418,7 @@ class Option:
 
         # Retreival from the database
         c = db_conn.cursor()
-        c.execute('SELECT pl_id, txt FROM options WHERE pl_id=?', (pl_id,))
+        c.execute('SELECT * FROM options WHERE pl_id=?', (pl_id,))
         rows = c.fetchall()
         c.close()
 
@@ -571,7 +574,11 @@ class Planner(telepot.helper.ChatHandler):
             return
 
         # Create a new planning
-        planning = Planning(None, title, Planning.Status.UNDER_CONSTRUCTION)
+        planning = Planning(
+            pl_id=None,
+            user_id=self._from['id'],
+            title=title,
+            status=Planning.Status.UNDER_CONSTRUCTION)
 
         # Save the new planning to the database
         planning.save_to_db(self._conn)
