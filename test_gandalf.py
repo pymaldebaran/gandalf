@@ -156,24 +156,37 @@ def init_planner_tester(tmpdir):
     # Create easy to use planner tester
     planner_tester = PlannerTester(planner, seed, db_test)
 
-    # We need a user to send the messages
-    user = {
-        'id':1234567890,
-        'first_name':'Joey',
-        'last_name':'Tribbiani',
-        'username':'@friendsjoey'
-    }
-
-    yield db_test, cursor, planner_tester, user
+    yield db_test, cursor, planner_tester
 
     # Close the database and cursor
     cursor.close()
     conn.close()
 
 
-def test_say_anything(init_planner_tester):
+@pytest.fixture()
+def users():
+    """Setup that gives some users for sending messages."""
+    joey = {
+        'id':1234567890,
+        'first_name':'Joey',
+        'last_name':'Tribbiani',
+        'username':'@friendsjoey'
+    }
+
+    chandler = {
+        'id':1111111111,
+        'first_name':'Chandler',
+        'last_name':'Bing',
+        'username':'@friendschandler'
+    }
+
+    return joey, chandler
+
+
+def test_say_anything(init_planner_tester, users):
     """Test what happens when we send whatever message to the bot."""
-    db_test, cursor, planner_tester, user = init_planner_tester
+    db_test, cursor, planner_tester = init_planner_tester
+    user, _ = users
 
     planner_tester.send_message(user, "Hello handsome ;)")
 
@@ -196,9 +209,10 @@ def test_say_anything(init_planner_tester):
     assert len(rows) == 0, "No option should have been created."
 
 
-def test_help_command(init_planner_tester):
+def test_help_command(init_planner_tester, users):
     """Test what happens when using the /help command."""
-    db_test, cursor, planner_tester, user = init_planner_tester
+    db_test, cursor, planner_tester = init_planner_tester
+    user, _ = users
 
     planner_tester.send_message(user, "/help")
 
@@ -214,9 +228,10 @@ def test_help_command(init_planner_tester):
         '/help - display this help')
 
 
-def test_new_command_starts_creation_of_a_planning(init_planner_tester):
+def test_new_command_starts_creation_of_a_planning(init_planner_tester, users):
     """Test what happens when using the /new command."""
-    db_test, cursor, planner_tester, user = init_planner_tester
+    db_test, cursor, planner_tester = init_planner_tester
+    user, _ = users
 
     planner_tester.send_message(user, "/new Fancy diner")
 
@@ -248,9 +263,10 @@ def test_new_command_starts_creation_of_a_planning(init_planner_tester):
     assert len(rows) == 0, "No option should have been created."
 
 
-def test_new_command_without_title(init_planner_tester):
+def test_new_command_without_title(init_planner_tester, users):
     """Test what happens when /new command is used without a title."""
-    db_test, cursor, planner_tester, user = init_planner_tester
+    db_test, cursor, planner_tester = init_planner_tester
+    user, _ = users
 
     planner_tester.send_message(user, "/new")
 
@@ -274,9 +290,10 @@ def test_new_command_without_title(init_planner_tester):
     assert len(rows) == 0, "No option should have been created."
 
 
-def test_plannings_command_without_planning(init_planner_tester):
+def test_plannings_command_without_planning(init_planner_tester, users):
     """Test what happens when /new command is used without a title."""
-    db_test, cursor, planner_tester, user = init_planner_tester
+    db_test, cursor, planner_tester = init_planner_tester
+    user, _ = users
 
     planner_tester.send_message(user, "/plannings")
 
@@ -287,17 +304,23 @@ def test_plannings_command_without_planning(init_planner_tester):
         parse_mode='Markdown')
 
 
-def test_plannings_command_with_some_planning(init_planner_tester):
+def test_plannings_command_with_some_planning(init_planner_tester, users):
     """Test what happens when /new command is used without a title."""
-    db_test, cursor, planner_tester, user = init_planner_tester
+    db_test, cursor, planner_tester = init_planner_tester
+    joey, chandler = users
 
-    planner_tester.send_message(user, "/new Fancy diner")
-    planner_tester.send_message(user, "1 Monday evening")
-    planner_tester.send_message(user, "/done")
-    planner_tester.send_message(user, "/new Crappy lunch")
+    # First Joey is planning some stuff
+    planner_tester.send_message(joey, "/new Fancy diner")
+    planner_tester.send_message(joey, "1 Monday evening")
+    planner_tester.send_message(joey, "/done")
+    planner_tester.send_message(joey, "/new Crappy lunch")
+    # Then Chandler too
+    planner_tester.send_message(chandler, "/new Lousy breakfast")
+
+    # What is Joey viewing ?
     # We reset call count to test only this call
     planner_tester.planner.sender.sendMessage.reset_mock()
-    planner_tester.send_message(user, "/plannings")
+    planner_tester.send_message(joey, "/plannings")
 
     # Test answer
     planner_tester.planner.sender.sendMessage.call_count == 1
@@ -307,10 +330,24 @@ def test_plannings_command_with_some_planning(init_planner_tester):
         '*2*. *Crappy lunch* - _Under construction_',
         parse_mode='Markdown')
 
+    # What is Chandler viewing ?
+    # We reset call count to test only this call
+    planner_tester.planner.sender.sendMessage.reset_mock()
+    planner_tester.send_message(chandler, "/plannings")
 
-def test_can_create_a_planning(init_planner_tester):
+    # Test answer
+    planner_tester.planner.sender.sendMessage.call_count == 1
+    planner_tester.planner.sender.sendMessage.assert_called_with(
+        'You have currently 1 plannings:\n\n'
+        '*1*. *Lousy breakfast* - _Under construction_',
+        parse_mode='Markdown')
+
+
+# TODO modifiy this test to check user un planning
+def test_can_create_a_planning(init_planner_tester, users):
     """Simplest planning creation scenario."""
-    db_test, cursor, planner_tester, user = init_planner_tester
+    db_test, cursor, planner_tester = init_planner_tester
+    user, _ = users
 
     # The scenario
     planner_tester.send_message(user, "/new Fancy diner")
@@ -342,9 +379,10 @@ def test_can_create_a_planning(init_planner_tester):
     assert ("4 Saturday evening",) == rows[3], "Text should be set correctly."
 
 
-def test_can_cancel_a_planning(init_planner_tester):
+def test_can_cancel_a_planning(init_planner_tester, users):
     """Scenario where we start creating a planning but then cancel it."""
-    db_test, cursor, planner_tester, user = init_planner_tester
+    db_test, cursor, planner_tester = init_planner_tester
+    user, _ = users
 
     # The scenario
     planner_tester.send_message(user, "/new Fancy diner")
