@@ -191,20 +191,20 @@ def test_say_anything(init_planner_tester, users):
     planner_tester.send_message(user, "Hello handsome ;)")
 
     # Test answer
-    planner_tester.planner.sender.sendMessage.call_count == 1
-    planner_tester.planner.sender.sendMessage.assert_called_with(
+    assert planner_tester.planner.sender.sendMessage.call_count == 1
+    planner_tester.planner.sender.sendMessage.assert_called_once_with(
         'Sorry I did not understand... try /help to see how you should talk '
         'to me.')
 
     # Test the database content
 
     # Plannings table
-    cursor.execute("SELECT title, status FROM plannings")
+    cursor.execute("SELECT * FROM plannings")
     rows = cursor.fetchall()
     assert len(rows) == 0, "No planning should have been created."
 
     # Options table
-    cursor.execute("SELECT txt FROM options ORDER BY txt")
+    cursor.execute("SELECT * FROM options ORDER BY txt")
     rows = cursor.fetchall()
     assert len(rows) == 0, "No option should have been created."
 
@@ -218,7 +218,7 @@ def test_help_command(init_planner_tester, users):
 
     # Test answer
     planner_tester.planner.sender.sendMessage.call_count == 1
-    planner_tester.planner.sender.sendMessage.assert_called_with(
+    planner_tester.planner.sender.sendMessage.assert_called_once_with(
         'This bot will help you create planings. Use /new to create a '
         'planning here, then publish it to groups or send it to individual '
         'friends.\n\n'
@@ -237,7 +237,7 @@ def test_new_command_starts_creation_of_a_planning(init_planner_tester, users):
 
     # Test answer
     planner_tester.planner.sender.sendMessage.call_count == 1
-    planner_tester.planner.sender.sendMessage.assert_called_with(
+    planner_tester.planner.sender.sendMessage.assert_called_once_with(
         'You want to create a planning named *Fancy diner*. Send me a description'
         'or a question to ask to the participant. '
         '/cancel to abort creation.',
@@ -246,10 +246,10 @@ def test_new_command_starts_creation_of_a_planning(init_planner_tester, users):
     # Test the database content
 
     # Plannings table
-    cursor.execute("SELECT user_id, title, status FROM plannings")
+    cursor.execute("SELECT * FROM plannings")
     rows = cursor.fetchall()
     assert len(rows) == 1, "Only one planning should be created."
-    user_id, title, status = rows[0]
+    _, user_id, title, status = rows[0]
     assert user['id'] == user_id,\
         "User id of the sender should be set correctly."
     assert "Fancy diner" == title,\
@@ -258,7 +258,7 @@ def test_new_command_starts_creation_of_a_planning(init_planner_tester, users):
         "Status should be set correctly."
 
     # Options table
-    cursor.execute("SELECT txt FROM options ORDER BY txt")
+    cursor.execute("SELECT * FROM options ORDER BY txt")
     rows = cursor.fetchall()
     assert len(rows) == 0, "No option should have been created."
 
@@ -272,7 +272,7 @@ def test_new_command_without_title(init_planner_tester, users):
 
     # Test answer
     planner_tester.planner.sender.sendMessage.call_count == 1
-    planner_tester.planner.sender.sendMessage.assert_called_with(
+    planner_tester.planner.sender.sendMessage.assert_called_once_with(
         'Sorry to create a planning you have give a title after the /new '
         'command. Like this :\n\n'
         '/new _My fancy planning title_',
@@ -281,11 +281,11 @@ def test_new_command_without_title(init_planner_tester, users):
     # Test the database content
 
     # Plannings table
-    cursor.execute("SELECT title, status FROM plannings")
+    cursor.execute("SELECT * FROM plannings")
     rows = cursor.fetchall()
     assert len(rows) == 0, "No planning should be created."
     # Options table
-    cursor.execute("SELECT txt FROM options ORDER BY txt")
+    cursor.execute("SELECT * FROM options ORDER BY txt")
     rows = cursor.fetchall()
     assert len(rows) == 0, "No option should have been created."
 
@@ -299,7 +299,7 @@ def test_plannings_command_without_planning(init_planner_tester, users):
 
     # Test answer
     planner_tester.planner.sender.sendMessage.call_count == 1
-    planner_tester.planner.sender.sendMessage.assert_called_with(
+    planner_tester.planner.sender.sendMessage.assert_called_once_with(
         'You have currently 0 plannings:\n\n',
         parse_mode='Markdown')
 
@@ -324,7 +324,7 @@ def test_plannings_command_with_some_planning(init_planner_tester, users):
 
     # Test answer
     planner_tester.planner.sender.sendMessage.call_count == 1
-    planner_tester.planner.sender.sendMessage.assert_called_with(
+    planner_tester.planner.sender.sendMessage.assert_called_once_with(
         'You have currently 2 plannings:\n\n'
         '*1*. *Fancy diner* - _Opened_\n\n'
         '*2*. *Crappy lunch* - _Under construction_',
@@ -337,7 +337,7 @@ def test_plannings_command_with_some_planning(init_planner_tester, users):
 
     # Test answer
     planner_tester.planner.sender.sendMessage.call_count == 1
-    planner_tester.planner.sender.sendMessage.assert_called_with(
+    planner_tester.planner.sender.sendMessage.assert_called_once_with(
         'You have currently 1 plannings:\n\n'
         '*1*. *Lousy breakfast* - _Under construction_',
         parse_mode='Markdown')
@@ -363,20 +363,29 @@ def test_can_create_a_planning(init_planner_tester, users):
     # Test the database content
 
     # Plannings table
-    cursor.execute("SELECT title, status FROM plannings")
+    cursor.execute("SELECT * FROM plannings")
     rows = cursor.fetchall()
     assert len(rows) == 1, "Only one planning should be created."
-    assert ("Fancy diner", Planning.Status.OPENED) == rows[0],\
-        "Title and status should be set correctly."
+    _, user_id, title, status = rows[0]
+    assert user['id'] == user_id,\
+        "User id of the sender should be set correctly."
+    assert "Fancy diner" == title,\
+        "Title should be set correctly."
+    assert Planning.Status.UNDER_CONSTRUCTION == status,\
+        "Status should be set correctly."
 
     # Options table
-    cursor.execute("SELECT txt FROM options ORDER BY txt")
+    cursor.execute("SELECT * FROM options ORDER BY txt")
     rows = cursor.fetchall()
     assert len(rows) == 4, "4 options should be created."
-    assert ("1 Monday evening",) == rows[0], "Text should be set correctly."
-    assert ("2 Tuesday evening",) == rows[1], "Text should be set correctly."
-    assert ("3 Thursday evening",) == rows[2], "Text should be set correctly."
-    assert ("4 Saturday evening",) == rows[3], "Text should be set correctly."
+    assert ("1 Monday evening",) == rows[0],\
+        "Option text should be set correctly."
+    assert ("2 Tuesday evening",) == rows[1],\
+        "Option text should be set correctly."
+    assert ("3 Thursday evening",) == rows[2],\
+        "Option text should be set correctly."
+    assert ("4 Saturday evening",) == rows[3],\
+        "Option text should be set correctly."
 
 
 def test_can_cancel_a_planning(init_planner_tester, users):
@@ -398,12 +407,12 @@ def test_can_cancel_a_planning(init_planner_tester, users):
     # Test the database content
 
     # Plannings table
-    cursor.execute("SELECT title, status FROM plannings")
+    cursor.execute("SELECT * FROM plannings")
     rows = cursor.fetchall()
     assert len(rows) == 0, "No planning should have been created."
 
     # Options table
-    cursor.execute("SELECT txt FROM options ORDER BY txt")
+    cursor.execute("SELECT * FROM options ORDER BY txt")
     rows = cursor.fetchall()
     assert len(rows) == 0, "No option should have been created."
 
