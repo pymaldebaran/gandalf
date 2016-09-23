@@ -86,7 +86,10 @@ LOG_MSG = {
     'db_file_deleted':
         'Database file <{dbfile}> already existed and was deleted.',
     'db_new_planning':
-        'Planning "{title}" added to database file <{dbfile}>.'
+        'Planning "{title}" added to database file <{dbfile}>.',
+    'planning_already_in_progress':
+        'Impossible to create a new planning, there is already a planning '
+        'in progress.'
 }
 CHAT_MSG = {
     'help_answer':
@@ -108,7 +111,7 @@ CHAT_MSG = {
         'Sorry to create a planning you have give a title after the /new '
         'command. Like this :\n\n'
         '/new _My fancy planning title_',
-    'new_cancel_first_answer':
+    'new_already_in_progress':
         'Sorry but you already have a planning creation in progress.\n'
         'You can cancel the current creation using the /cancel command or '
         'finish it using the /done command.',
@@ -159,9 +162,10 @@ class Planning:
         OPENED = "Opened"
         CLOSED = "Closed"
 
-    def __init__(self, pl_id, title, status):
+    def __init__(self, pl_id, user_id, title, status):
         """Create a new Planning."""
         self.pl_id = pl_id
+        self.user_id = user_id
         self.title = title
         self.status = status
 
@@ -195,8 +199,10 @@ class Planning:
         assert db_conn is not None
 
         c = db_conn.cursor()
-        c.execute("INSERT INTO plannings(title, status) VALUES (?,?)",
-            (self.title, self.status))
+        c.execute(
+            """INSERT INTO plannings(user_id, title, status)
+                VALUES (?,?,?)""",
+            (self.user_id, self.title, self.status))
         db_conn.commit()
         c.close()
 
@@ -272,37 +278,41 @@ class Planning:
 
 
     @staticmethod
-    def load_all_from_db(db_conn):
+    def load_all_from_db(user_id, db_conn):
         """
-        Load all the instances available in the database.
+        Load all the instances belonging to the user in the database.
 
         Arguments:
+            user_id -- Telegram user id to look for in the database via the
+                       user_id column.
             db_conn -- connexion to the database from which to load the
                        plannings.
 
         Returns:
             A list of Planning instances corresponding to the one present in
-            the database. If no instance are available [] is returned.
+            the database with user_id corresponding to the one provided. If no
+            instance are available [] is returned.
 
         """
         # Preconditions
         assert db_conn is not None
+        assert user_id is not None
 
         # Retreive all the planning data from the db as tuple
         c = db_conn.cursor()
-        c.execute('SELECT pl_id, title, status FROM plannings')
+        c.execute('SELECT * FROM plannings WHERE user_id=?', (user_id,))
         rows = c.fetchall()
         c.close()
 
         # Create the Planning instances
-        plannings = [Planning(pl_id, title, status)\
-            for pl_id, title, status in rows]
+        plannings = [Planning(pl_id, user_id, title, status)\
+            for pl_id, user_id, title, status in rows]
 
         return plannings
 
 
     @staticmethod
-    def load_under_construction_from_db(db_conn):
+    def load_under_construction_from_db(user_id, db_conn):
         """
         Load the only available under construction planning from the database.
 
@@ -321,12 +331,13 @@ class Planning:
             in the database AssertionError is raised.
         """
         # Preconditions
+        assert user_id is not None
         assert db_conn is not None
 
         # Retreival from the database
         c = db_conn.cursor()
-        c.execute('SELECT pl_id, title, status FROM plannings WHERE status=?',
-            (Planning.Status.UNDER_CONSTRUCTION,))
+        c.execute('SELECT * FROM plannings WHERE status=? AND user_id=?',
+            (Planning.Status.UNDER_CONSTRUCTION, user_id))
         rows = c.fetchall()
         c.close()
 
@@ -340,12 +351,12 @@ class Planning:
         # Now that we are sure there's not many instances, let's return what
         # we have found
         if rows:
-            pl_id, title, status = rows[0]
-            p = Planning(pl_id, title, status)
+            pl_id, user_id, title, status = rows[0]
+            p = Planning(pl_id, user_id, title, status)
 
             # Postconditions
-            assert p.pl_id is not None, "A Planning instance extracted from the "\
-                "database must have an id."
+            assert p.pl_id is not None, "A Planning instance extracted from "\
+                "the database must have an id."
 
             return p
         else:
@@ -415,7 +426,7 @@ class Option:
 
         # Retreival from the database
         c = db_conn.cursor()
-        c.execute('SELECT pl_id, txt FROM options WHERE pl_id=?', (pl_id,))
+        c.execute('SELECT * FROM options WHERE pl_id=?', (pl_id,))
         rows = c.fetchall()
         c.close()
 
@@ -476,7 +487,7 @@ class Planner(telepot.helper.ChatHandler):
         self._from = initial_msg['from']
 
         # Use default value only if db is not set
-        db = DATABASE_FILE if not db else db
+        db = db or DATABASE_FILE
         # Connect to the persistence database
         self._conn = sqlite3.connect(db)
 
@@ -511,6 +522,11 @@ class Planner(telepot.helper.ChatHandler):
         """React the the reception of a Telegram message."""
         # Raw printing of the message received
         pprint(msg)
+
+        # Preconditions
+        assert msg is not None
+        assert msg['from']['id'] == self._from['id'],\
+            "We should never process messages from another user."
 
         # Retreive basic information
         content_type, _, chat_id = telepot.glance(msg)
@@ -554,10 +570,14 @@ class Planner(telepot.helper.ChatHandler):
         """
         # Precondition
         assert self._conn is not None
+        assert self._from is not None
 
-        # First check if there is not a planning uneder construction
-        if Planning.load_under_construction_from_db(self._conn) is not None:
-            self.sender.sendMessage(CHAT_MSG['new_cancel_first_answer'])
+        # First check if there is not a planning under construction
+        if Planning.load_under_construction_from_db(self._from['id'], self._conn) is not None:
+            # Tell the user
+            self.sender.sendMessage(CHAT_MSG['new_already_in_progress'])
+            # Log some info for easy debugging
+            print(LOG_MSG['planning_already_in_progress'])
             return
 
         # Retrieve the title of the planning
@@ -571,7 +591,11 @@ class Planner(telepot.helper.ChatHandler):
             return
 
         # Create a new planning
-        planning = Planning(None, title, Planning.Status.UNDER_CONSTRUCTION)
+        planning = Planning(
+            pl_id=None,
+            user_id=self._from['id'],
+            title=title,
+            status=Planning.Status.UNDER_CONSTRUCTION)
 
         # Save the new planning to the database
         planning.save_to_db(self._conn)
@@ -590,9 +614,10 @@ class Planner(telepot.helper.ChatHandler):
         """Handle the /plannings command by retreiving all plannings."""
         # Preconditions
         assert self._conn is not None
+        assert self._from is not None
 
-        # Retrieve plannings from database
-        plannings = Planning.load_all_from_db(self._conn)
+        # Retrieve plannings from database for current user
+        plannings = Planning.load_all_from_db(self._from['id'], self._conn)
 
         # Prepare a list of the short desc of each planning
         planning_list = '\n\n'.join(
@@ -614,9 +639,10 @@ class Planner(telepot.helper.ChatHandler):
         """
         # Preconditions
         assert self._conn is not None
+        assert self._from is not None
 
         # Retreive the current planning if any
-        planning = Planning.load_under_construction_from_db(self._conn)
+        planning = Planning.load_under_construction_from_db(self._from['id'], self._conn)
 
         # No planning... nothing to do
         if planning is None:
@@ -638,9 +664,10 @@ class Planner(telepot.helper.ChatHandler):
         """
         # Preconditions
         assert self._conn is not None
+        assert self._from is not None
 
         # Retreive the current planning if any
-        planning = Planning.load_under_construction_from_db(self._conn)
+        planning = Planning.load_under_construction_from_db(self._from['id'], self._conn)
 
         # No planning... nothing to do and return
         if planning is None:
@@ -676,9 +703,10 @@ class Planner(telepot.helper.ChatHandler):
         """
         # Preconditions
         assert self._conn is not None
+        assert self._from is not None
 
         # Retreive the current planning if any
-        planning = Planning.load_under_construction_from_db(self._conn)
+        planning = Planning.load_under_construction_from_db(self._from['id'], self._conn)
 
         if planning is not None:
             # We have a planning in progress... let's add the option to it !
@@ -751,12 +779,13 @@ def createdb(db, **kwargs):
     # Create tables
     c.execute("""CREATE TABLE plannings (
         pl_id INTEGER PRIMARY KEY,
+        user_id INTEGER,
         title TEXT NOT NULL,
         status TEXT NOT NULL
         )""")
     c.execute("""CREATE TABLE options (
         pl_id INTEGER NOT NULL,
-        txt NOT NULL,
+        txt TEXT NOT NULL,
         FOREIGN KEY(pl_id) REFERENCES plannings(pl_id)
         )""")
 
