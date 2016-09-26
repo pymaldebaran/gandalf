@@ -311,6 +311,34 @@ def test_new_command_without_title(init_planner_tester, users):
     assert len(rows) == 0, "No option should have been created."
 
 
+def test_done_command_show_a_planning_recap(init_planner_tester, users):
+    """Test what is sent by the bot after a valid /done command."""
+    db_test, cursor, planner_tester = init_planner_tester
+    user, _ = users
+
+    # Planning some stuff
+    planner_tester.send_message(user, "/new Fancy diner")
+    planner_tester.send_message(user, "1 Monday evening")
+    planner_tester.send_message(user, "2 Tuesday evening")
+    planner_tester.send_message(user, "3 Thursday evening")
+    planner_tester.send_message(user, "4 Saturday evening")
+
+    # We reset call count to test only next call
+    planner = planner_tester.get_planner(user)
+    planner.sender.sendMessage.reset_mock()
+
+    # And we are done with this planning
+    planner_tester.send_message(user, "/done")
+
+    # Test answer
+    planner.sender.sendMessage.call_count == 1
+    planner.sender.sendMessage.assert_called_once_with(
+        '👍 Planning created. You can now publish it to a group or send it '
+        'to your friends in a private message. To do this, tap the button '
+        'below or start your message in any other chat with '
+        '@gandalf_planner_bot and select one of your polls to send.')
+
+
 def test_plannings_command_without_planning(init_planner_tester, users):
     """Test what happens when /new command is used without a title."""
     db_test, cursor, planner_tester = init_planner_tester
