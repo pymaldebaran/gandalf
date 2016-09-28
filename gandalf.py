@@ -72,10 +72,8 @@ LOG_MSG = {
         'talk to me.',
     'goodbye':
         '\nParty is over ! Time to go to bed.',
-    'user_greetings':
-        'Hello {userfirstname}... are you doing?',
-    'user_goodbye':
-        'Goodbye {userfirstname}... it was nice seeing you.',
+    'goodbye':
+        'Goodbye... it was nice seeing you.',
     'db_file_created':
         'New database file <{dbfile}> created.',
     'db_file_deleted':
@@ -466,35 +464,11 @@ class Planner(telepot.helper.ChatHandler):
         """
         super(Planner, self).__init__(seed_tuple, **kwargs)
 
-        self._from = None  # User that started the chat with the bot
         self._db_file = db_file  # Database file name (for log & debug)
         self._conn = sqlite3.connect(db_file)  # Connexion to the database
 
         # Post condition
         assert self._conn is not None
-
-
-    # TODO stop using this function instead extract from in each method
-    def open(self, initial_msg, seed_tuple):
-        """
-        Called at the 1st message of a user.
-
-        Arguments:
-            initial_msg -- first message recieved by the Planner
-            seed_tuple -- seed of the delegator
-        """
-        # Preconditions
-        assert self._from is None
-
-        # Initialise the from attribute using the first message
-        self._from = initial_msg['from']
-
-        # Some feedback for the logs
-        print(LOG_MSG['user_greetings'].format(
-            userfirstname=self._from['first_name']))
-
-        # Post condition
-        assert self._from is not None
 
 
     def on_close(self, ex):
@@ -503,26 +477,17 @@ class Planner(telepot.helper.ChatHandler):
 
         Timeout is mandatory to prevent infinity of threads to be created.
         """
-        # Preconditions
-        assert self._from is not None
-
         # Close the connexion to the database
         self._conn.close()
 
         # Some feedback for the logs
-        print(LOG_MSG['user_goodbye'].format(
-            userfirstname=self._from['first_name']))
+        print(LOG_MSG['goodbye'])
 
 
     def on_chat_message(self, msg):
         """React the the reception of a Telegram message."""
         # Raw printing of the message received
         pprint(msg)
-
-        # Preconditions
-        assert msg is not None
-        assert msg['from']['id'] == self._from['id'],\
-            "We should never process messages from another user."
 
         # Retreive basic information
         content_type, _, chat_id = telepot.glance(msg)
@@ -534,29 +499,30 @@ class Planner(telepot.helper.ChatHandler):
 
         # Now we can extract the text...
         text = msg['text']
+        from_user = msg['from']
 
         # Switching according to witch command is received
         if is_command(text, '/help'):
-            self.on_command_help()
+            self.on_command_help(from_user)
         elif is_command(text, '/new'):
-            self.on_command_new(text)
+            self.on_command_new(from_user, text)
         elif is_command(text, '/plannings'):
-            self.on_command_plannings()
+            self.on_command_plannings(from_user)
         elif is_command(text, '/cancel'):
-            self.on_command_cancel()
+            self.on_command_cancel(from_user)
         elif is_command(text, '/done'):
-            self.on_command_done()
+            self.on_command_done(from_user)
         # Not a command or not a recognized one
         else:
-            self.on_not_a_command(text)
+            self.on_not_a_command(from_user, text)
 
 
-    def on_command_help(self):
+    def on_command_help(self, from_user):
         """Handle the /help command by sending an help message."""
         self.sender.sendMessage(CHAT_MSG['help_answer'])
 
 
-    def on_command_new(self, text):
+    def on_command_new(self, from_user, text):
         """
         Handle the /new command by creating a new planning.
 
@@ -564,11 +530,8 @@ class Planner(telepot.helper.ChatHandler):
         text -- string containing the text of the message recieved (including
                 the /new command)
         """
-        # Precondition
-        assert self._from is not None
-
         # First check if there is not a planning under construction
-        if Planning.load_under_construction_from_db(self._from['id'], self._conn) is not None:
+        if Planning.load_under_construction_from_db(from_user['id'], self._conn) is not None:
             # Tell the user
             self.sender.sendMessage(CHAT_MSG['new_already_in_progress'])
             # Log some info for easy debugging
@@ -588,7 +551,7 @@ class Planner(telepot.helper.ChatHandler):
         # Create a new planning
         planning = Planning(
             pl_id=None,
-            user_id=self._from['id'],
+            user_id=from_user['id'],
             title=title,
             status=Planning.Status.UNDER_CONSTRUCTION)
 
@@ -605,13 +568,10 @@ class Planner(telepot.helper.ChatHandler):
         self.sender.sendMessage(reply, parse_mode='Markdown')
 
 
-    def on_command_plannings(self):
+    def on_command_plannings(self, from_user):
         """Handle the /plannings command by retreiving all plannings."""
-        # Preconditions
-        assert self._from is not None
-
         # Retrieve plannings from database for current user
-        plannings = Planning.load_all_from_db(self._from['id'], self._conn)
+        plannings = Planning.load_all_from_db(from_user['id'], self._conn)
 
         # Prepare a list of the short desc of each planning
         planning_list = '\n\n'.join(
@@ -624,18 +584,17 @@ class Planner(telepot.helper.ChatHandler):
         self.sender.sendMessage(reply, parse_mode='Markdown')
 
 
-    def on_command_cancel(self):
+    def on_command_cancel(self, from_user):
         """
         Handle the /cancel command to cancel the current planning.
 
         This only works if there is a planning under construction i.e. after a
         /new command and before a /done command.
         """
-        # Preconditions
-        assert self._from is not None
-
         # Retreive the current planning if any
-        planning = Planning.load_under_construction_from_db(self._from['id'], self._conn)
+        planning = Planning.load_under_construction_from_db(
+            from_user['id'],
+            self._conn)
 
         # No planning... nothing to do
         if planning is None:
@@ -647,7 +606,7 @@ class Planner(telepot.helper.ChatHandler):
             self.sender.sendMessage(CHAT_MSG['cancel_answer'])
 
 
-    def on_command_done(self):
+    def on_command_done(self, from_user):
         """
         Handle the /done command to finish the current planning.
 
@@ -655,11 +614,10 @@ class Planner(telepot.helper.ChatHandler):
         /new command and after the creation of at least one option for this
         planning.
         """
-        # Preconditions
-        assert self._from is not None
-
         # Retreive the current planning if any
-        planning = Planning.load_under_construction_from_db(self._from['id'], self._conn)
+        planning = Planning.load_under_construction_from_db(
+            from_user['id'],
+            self._conn)
 
         # No planning... nothing to do and return
         if planning is None:
@@ -683,7 +641,7 @@ class Planner(telepot.helper.ChatHandler):
             botusername=self.bot.getMe()['username']))
 
 
-    def on_not_a_command(self, text):
+    def on_not_a_command(self, from_user, text):
         """
         Handle any text message that is not a command or not a recognised one.
 
@@ -694,11 +652,10 @@ class Planner(telepot.helper.ChatHandler):
         Arguments:
         text -- string containing the text of the message recieved.
         """
-        # Preconditions
-        assert self._from is not None
-
         # Retreive the current planning if any
-        planning = Planning.load_under_construction_from_db(self._from['id'], self._conn)
+        planning = Planning.load_under_construction_from_db(
+            from_user['id'],
+            self._conn)
 
         if planning is not None:
             # We have a planning in progress... let's add the option to it !
@@ -727,7 +684,7 @@ def serve(token, db, **kwargs):
         per_chat_id(),
         create_open,
         Planner,
-        db,
+        db,  # Param for Planner constructor
         timeout=TIMEOUT)
     bot = telepot.DelegatorBot(token, [delegation_pattern])
 
