@@ -66,11 +66,6 @@ TIMEOUT = 60*60  # sec
 
 DEFAULT_DATABASE_FILE = 'plannings.db'
 
-# Global variable used to give database file name to the threads.
-# It is initialized through the program --db argument.
-# Only serve() has write access to that variable to initialize it.
-DATABASE_FILE = None
-
 LOG_MSG = {
     'greetings':
         'My name is {botname} and you can contact me via @{botusername} and '
@@ -459,37 +454,40 @@ def is_command(text, cmd):
 class Planner(telepot.helper.ChatHandler):
     """Process messages to create persistent plannings."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, seed_tuple, db_file, **kwargs):
         """
         Create a new Planner.
 
         This is implicitly called when creating a new thread.
+
+        Arguments:
+            seed_tuple -- seed of the delegator.
+            db_file -- database file to use.
         """
-        super(Planner, self).__init__(*args, **kwargs)
+        super(Planner, self).__init__(seed_tuple, **kwargs)
+
         self._from = None  # User that started the chat with the bot
-        self._conn = None  # Connexion to the database
+        self._db_file = db_file  # Database file name (for log & debug)
+        self._conn = sqlite3.connect(db_file)  # Connexion to the database
+
+        # Post condition
+        assert self._conn is not None
 
 
-    def open(self, initial_msg, seed, db=None):
+    # TODO stop using this function instead extract from in each method
+    def open(self, initial_msg, seed_tuple):
         """
         Called at the 1st message of a user.
 
         Arguments:
             initial_msg -- first message recieved by the Planner
-            seed -- seed of the delegator
-            db -- database file to use (for test purpose only)
+            seed_tuple -- seed of the delegator
         """
         # Preconditions
         assert self._from is None
-        assert self._conn is None
 
         # Initialise the from attribute using the first message
         self._from = initial_msg['from']
-
-        # Use default value only if db is not set
-        db = db or DATABASE_FILE
-        # Connect to the persistence database
-        self._conn = sqlite3.connect(db)
 
         # Some feedback for the logs
         print(LOG_MSG['user_greetings'].format(
@@ -497,7 +495,6 @@ class Planner(telepot.helper.ChatHandler):
 
         # Post condition
         assert self._from is not None
-        assert self._conn is not None
 
 
     def on_close(self, ex):
@@ -508,7 +505,6 @@ class Planner(telepot.helper.ChatHandler):
         """
         # Preconditions
         assert self._from is not None
-        assert self._conn is not None
 
         # Close the connexion to the database
         self._conn.close()
@@ -569,7 +565,6 @@ class Planner(telepot.helper.ChatHandler):
                 the /new command)
         """
         # Precondition
-        assert self._conn is not None
         assert self._from is not None
 
         # First check if there is not a planning under construction
@@ -602,7 +597,7 @@ class Planner(telepot.helper.ChatHandler):
 
         # Some feedback in the logs
         print(LOG_MSG['db_new_planning'].format(
-            dbfile=DATABASE_FILE,
+            dbfile=self._db_file,
             title=planning.title))
 
         # Send the answer
@@ -613,7 +608,6 @@ class Planner(telepot.helper.ChatHandler):
     def on_command_plannings(self):
         """Handle the /plannings command by retreiving all plannings."""
         # Preconditions
-        assert self._conn is not None
         assert self._from is not None
 
         # Retrieve plannings from database for current user
@@ -638,7 +632,6 @@ class Planner(telepot.helper.ChatHandler):
         /new command and before a /done command.
         """
         # Preconditions
-        assert self._conn is not None
         assert self._from is not None
 
         # Retreive the current planning if any
@@ -663,7 +656,6 @@ class Planner(telepot.helper.ChatHandler):
         planning.
         """
         # Preconditions
-        assert self._conn is not None
         assert self._from is not None
 
         # Retreive the current planning if any
@@ -687,7 +679,8 @@ class Planner(telepot.helper.ChatHandler):
         planning.status = Planning.Status.OPENED
         planning.update_to_db(self._conn)
 
-        self.sender.sendMessage(CHAT_MSG['done_answer'])
+        self.sender.sendMessage(CHAT_MSG['done_answer'].format(
+            botusername=self.bot.getMe()['username']))
 
 
     def on_not_a_command(self, text):
@@ -702,7 +695,6 @@ class Planner(telepot.helper.ChatHandler):
         text -- string containing the text of the message recieved.
         """
         # Preconditions
-        assert self._conn is not None
         assert self._from is not None
 
         # Retreive the current planning if any
@@ -730,25 +722,20 @@ def serve(token, db, **kwargs):
         kwargs -- other command line arguments transmited after the "serve"
                   command.
     """
-    # We need write access to the global variable database to initialise it
-    global DATABASE_FILE
-    DATABASE_FILE = db
-
     # Initialise the bot
     delegation_pattern = pave_event_space()(
         per_chat_id(),
         create_open,
         Planner,
+        db,
         timeout=TIMEOUT)
     bot = telepot.DelegatorBot(token, [delegation_pattern])
 
     # Get the bot info
     me = bot.getMe()
-    NAME = me["first_name"]
-    USERNAME = me["username"]
     print(LOG_MSG['greetings'].format(
-        botname=NAME,
-        botusername=USERNAME))
+        botname=me["first_name"],
+        botusername=me["username"]))
 
     # Receive messages and dispatch them to the Delegates
     try:

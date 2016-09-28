@@ -120,11 +120,16 @@ class PlannerTester:
             timeout = 1
             planner = Planner(
                 seed_tuple=seed,
+                db_file=self.db,
                 event_space=event_space,
                 timeout=timeout)
             # We replace the sendMessage() func by a mock to be able to query
             # the number and argument of the sendMessage() calls
             planner.sender.sendMessage = MagicMock()
+
+            # We force the planner's bot to have the good name
+            planner.bot.getMe = MagicMock(
+                return_value = {"username":"gandalf_planner_bot"})
 
             # Put the planner in the dict
             self._users_planner[user_id] = planner
@@ -132,8 +137,7 @@ class PlannerTester:
             # Open a chat (we need to provide the first message)
             self._users_planner[user_id].open(
                 initial_msg=msg,
-                seed=seed,
-                db=self.db)
+                seed_tuple=seed)
 
         # We have a user we can send the message
         self._users_planner[user_id].on_chat_message(msg)
