@@ -245,7 +245,7 @@ def test_help_command(init_planner_tester, users):
 
     # Test answer
     planner = planner_tester.get_planner(user)
-    planner.sender.sendMessage.call_count == 1
+    assert planner.sender.sendMessage.call_count == 1
     planner.sender.sendMessage.assert_called_once_with(
         'This bot will help you create planings. Use /new to create a '
         'planning here, then publish it to groups or send it to individual '
@@ -265,7 +265,7 @@ def test_new_command_starts_creation_of_a_planning(init_planner_tester, users):
 
     # Test answer
     planner = planner_tester.get_planner(user)
-    planner.sender.sendMessage.call_count == 1
+    assert planner.sender.sendMessage.call_count == 1
     planner.sender.sendMessage.assert_called_once_with(
         'You want to create a planning named *Fancy diner*. Send me a description'
         'or a question to ask to the participant. '
@@ -301,7 +301,7 @@ def test_new_command_without_title(init_planner_tester, users):
 
     # Test answer
     planner = planner_tester.get_planner(user)
-    planner.sender.sendMessage.call_count == 1
+    assert planner.sender.sendMessage.call_count == 1
     planner.sender.sendMessage.assert_called_once_with(
         'Sorry to create a planning you have give a title after the /new '
         'command. Like this :\n\n'
@@ -340,7 +340,15 @@ def test_done_command_show_a_planning_recap(init_planner_tester, users):
     planner_tester.send_message(user, "/done")
 
     # Test answer
-    planner.sender.sendMessage.call_count == 1
+    assert planner.sender.sendMessage.call_count == 2
+    planner.sender.sendMessage.assert_called_once_with(
+        '*Fancy diner*\n'
+        '1 Monday evening - 👥 0\n'
+        '2 Tuesday evening - 👥 0\n'
+        '3 Thursday evening - 👥 0\n'
+        '4 Saturday evening - 👥 0\n\n'
+        '👥 0 people participated so far. _Planning Opened_.',
+        parse_mode='Markdown')
     planner.sender.sendMessage.assert_called_once_with(
         '👍 Planning created. You can now publish it to a group or send it '
         'to your friends in a private message. To do this, tap the button '
@@ -357,7 +365,7 @@ def test_plannings_command_without_planning(init_planner_tester, users):
 
     # Test answer
     planner = planner_tester.get_planner(user)
-    planner.sender.sendMessage.call_count == 1
+    assert planner.sender.sendMessage.call_count == 1
     planner.sender.sendMessage.assert_called_once_with(
         'You have currently 0 plannings:\n\n',
         parse_mode='Markdown')
@@ -384,7 +392,7 @@ def test_plannings_command_with_some_planning(init_planner_tester, users):
     planner_tester.send_message(joey, "/plannings")
 
     # Test answer
-    planner_joey.sender.sendMessage.call_count == 1
+    assert planner_joey.sender.sendMessage.call_count == 1
     planner_joey.sender.sendMessage.assert_called_once_with(
         'You have currently 2 plannings:\n\n'
         '*1*. *Fancy diner* - _Opened_\n\n'
@@ -399,7 +407,7 @@ def test_plannings_command_with_some_planning(init_planner_tester, users):
     planner_tester.send_message(chandler, "/plannings")
 
     # Test answer
-    planner_chandler.sender.sendMessage.call_count == 1
+    assert planner_chandler.sender.sendMessage.call_count == 1
     planner_chandler.sender.sendMessage.assert_called_once_with(
         'You have currently 1 plannings:\n\n'
         '*1*. *Lousy breakfast* - _Under construction_',
@@ -420,7 +428,7 @@ def test_can_create_a_planning(init_planner_tester, users):
     planner_tester.send_message(user, "/done")
 
     # Test answers
-    planner_tester.get_planner(user).sender.sendMessage.call_count == 6
+    assert planner_tester.get_planner(user).sender.sendMessage.call_count == 6
 
     # Test the database content
 
@@ -464,7 +472,7 @@ def test_can_cancel_a_planning(init_planner_tester, users):
     planner_tester.send_message(user, "/cancel")
 
     # Test answers
-    planner_tester.get_planner(user).sender.sendMessage.call_count == 6
+    assert planner_tester.get_planner(user).sender.sendMessage.call_count == 6
 
     # Test the database content
 

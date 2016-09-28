@@ -134,9 +134,14 @@ CHAT_MSG = {
         'You have currently {nb_plannings} plannings:\n\n'
         '{planning_list}',
     'planning_recap':
+        '*{title}*\n\n'
+        '{options}\n\n'
+        '👥 {nb_participants} people participated so far. '
+        '_Planning {planning_status}_.',
+    'planning_recap+':  # TODO use planning recap+ instead of planning recap
         '*{title}*\n'
         '_{description}_\n\n'
-        '{options}\n'
+        '{options}\n\n'
         '👥 {nb_participants} people participated so far. '
         '_Planning {planning_status}_.'
 }
