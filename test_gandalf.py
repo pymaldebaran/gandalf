@@ -343,7 +343,7 @@ def test_done_command_show_a_planning_recap(init_planner_tester, users):
     assert planner.sender.sendMessage.call_count == 2
     planner.sender.sendMessage.assert_has_calls(
         [
-        call('*Fancy diner*\n'
+        call('*Fancy diner*\n\n'
             '1 Monday evening - 👥 0\n'
             '2 Tuesday evening - 👥 0\n'
             '3 Thursday evening - 👥 0\n'
