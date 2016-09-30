@@ -354,10 +354,13 @@ def test_done_command_show_a_planning_recap(init_planner_tester, users):
             'to your friends in a private message. To do this, tap the button '
             'below or start your message in any other chat with '
             '@gandalf_planner_bot and select one of your polls to send.',
-            reply_markup=[[{
-                'text':'Publish planning',
-                'switch_inline_query':'planning_1'
-                }]])
+            reply_markup={
+                'inline_keyboard':[[{
+                    'text':'Publish planning',
+                    'switch_inline_query':'planning_1'
+                    }]]
+                }
+            )
         ])
 
 
