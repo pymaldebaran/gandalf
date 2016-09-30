@@ -214,6 +214,30 @@ class Planning:
             planning=self)
 
 
+    def full_description(self):
+        """
+        Return a full str description of the planning including its options.
+
+        Returns:
+            string describing the planning with detailed options and
+            contributors.
+        """
+        # TODO encapsulate this in Option.short_description()
+        options_msg = '\n'.join([
+                OPTION_SHORT.format(
+                    description=opt.txt,
+                    nb_participant=0)  # TODO replace with a number reteived from db
+                for opt in self.options])
+
+        desc_msg = CHAT_MSG['planning_recap'].format(
+            title=self.title,
+            options=options_msg,
+            nb_participants=0,  # TODO replace with a number reteived from db
+            planning_status=self.status)
+
+        return desc_msg
+
+
     def save_to_db(self):
         """Save the Planning object to the provided database."""
         c = self._db_conn.cursor()
@@ -642,18 +666,9 @@ class Planner(telepot.helper.ChatHandler):
 
         # First we must send a recap of the opened planning...
         # TODO encapsulte this formating in a helper function/method
-        options_msg = '\n'.join([
-                OPTION_SHORT.format(
-                    description=opt.txt,
-                    nb_participant=0)  # TODO replace with a number reteived from db
-                for opt in planning.options])
-
-        desc_msg = CHAT_MSG['planning_recap'].format(
-            title=planning.title,
-            options=options_msg,
-            nb_participants=0,  # TODO replace with a number reteived from db
-            planning_status=planning.status)
-        self.sender.sendMessage(desc_msg, parse_mode='Markdown')
+        self.sender.sendMessage(
+            planning.full_description(),
+            parse_mode='Markdown')
 
         # ...then we send a confirmation message
         self.sender.sendMessage(CHAT_MSG['done_answer'].format(
