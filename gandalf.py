@@ -84,6 +84,10 @@ LOG_MSG = {
         'Impossible to create a new planning, there is already a planning '
         'in progress.'
 }
+BTN_MSG = {
+    'publish':
+        'Publish planning'
+}
 CHAT_MSG = {
     'help_answer':
         'This bot will help you create planings. Use /new to create a '
@@ -501,8 +505,13 @@ class Planner(telepot.helper.ChatHandler):
         """
         super(Planner, self).__init__(seed_tuple, **kwargs)
 
-        self._db_file = db_file  # Database file name (for log & debug)
-        self._conn = sqlite3.connect(db_file)  # Connexion to the database
+        # Database file name (for log & debug)
+        self._db_file = db_file
+
+        # Connexion to the database
+        self._conn = sqlite3.connect(
+            db_file,
+            check_same_thread=False)  # TODO remove once switched to asyncio
 
         # Post condition
         assert self._conn is not None
@@ -677,8 +686,18 @@ class Planner(telepot.helper.ChatHandler):
             parse_mode='Markdown')
 
         # ...then we send a confirmation message
-        self.sender.sendMessage(CHAT_MSG['done_answer'].format(
-            botusername=self.bot.getMe()['username']))
+        self.sender.sendMessage(
+            CHAT_MSG['done_answer'].format(
+                botusername=self.bot.getMe()['username']),
+            reply_markup={
+                'inline_keyboard':[[{
+                    'text':
+                        BTN_MSG['publish'],
+                    'switch_inline_query':
+                            'planning_{id}'.format(id=planning.pl_id)
+                    }]]
+                }
+            )
 
 
     def on_not_a_command(self, from_user, text):
