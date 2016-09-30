@@ -365,7 +365,6 @@ class Planning:
             return None
 
 
-# TODO move this class inside Planning class
 class Option:
     """
     Represent a possible option for a planning.
@@ -378,34 +377,31 @@ class Option:
     because of a FOREIGN KEY constraint.
     """
 
-    def __init__(self, pl_id, txt):
+    def __init__(self, pl_id, txt, db_conn):
         """
         Create an Option instance providing all necessary information.
 
         Arguments:
             pl_id -- id of a planning to which the option belong.
             txt -- free form text of the option describing what it is.
-        """
-        self.pl_id = pl_id
-        self.txt = txt
-
-
-    def save_to_db(self, db_conn):
-        """
-        Save the Option object to the provided database.
-
-        Arguments:
             db_conn -- connexion to the database where the Planning will be
                        saved.
         """
         # Preconditions
         assert db_conn is not None
 
+        self.pl_id = pl_id
+        self.txt = txt
+        self._db_conn = db_conn
+
+
+    def save_to_db(self):
+        """Save the Option object to the provided database."""
         # Insert the new Option to the database
-        c = db_conn.cursor()
+        c = self._db_conn.cursor()
         c.execute("INSERT INTO options(pl_id, txt) VALUES (?,?)",
             (self.pl_id, self.txt))
-        db_conn.commit()
+        self._db_conn.commit()
         c.close()
 
 
@@ -434,7 +430,7 @@ class Option:
         c.close()
 
         # Let's build objects from those tuples
-        return [Option(my_id, my_txt) for my_id, my_txt in rows]
+        return [Option(my_id, my_txt, db_conn) for my_id, my_txt in rows]
 
 
 def is_command(text, cmd):
@@ -682,10 +678,10 @@ class Planner(telepot.helper.ChatHandler):
 
         if planning is not None:
             # We have a planning in progress... let's add the option to it !
-            opt = Option(planning.pl_id, text)
+            opt = Option(planning.pl_id, text, self._conn)
 
             # and save the option to database
-            opt.save_to_db(self._conn)
+            opt.save_to_db()
 
             self.sender.sendMessage(CHAT_MSG['option_answer'])
         else:
