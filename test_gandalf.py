@@ -151,6 +151,7 @@ class PlannerTester:
         planner.on_chat_message(msg)
 
 
+# TODO use telepot.namedtuple.Message as soon as the from_ bug is closed...
 def fake_msg(user, txt):
     """
     Helper function to create fake messages for test purpose.
