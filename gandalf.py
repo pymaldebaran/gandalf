@@ -672,7 +672,6 @@ class Planner(telepot.helper.ChatHandler):
         planning.update_to_db()
 
         # First we must send a recap of the opened planning...
-        # TODO encapsulte this formating in a helper function/method
         self.sender.sendMessage(
             planning.full_description(),
             parse_mode='Markdown')
