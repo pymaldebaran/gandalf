@@ -238,6 +238,16 @@ class Planning:
         return desc_msg
 
 
+    def inline_query_id(self):
+        """
+        Return a unique str representation of the planning for query.
+
+        This string can be used to create Telegram inline query to reference
+        this peticular planning.
+        """
+        return 'planning_{pl_id}'.format(pl_id=self.pl_id)
+
+
     def save_to_db(self):
         """Save the Planning object to the provided database."""
         c = self._db_conn.cursor()
@@ -691,10 +701,8 @@ class Planner(telepot.helper.ChatHandler):
                 botusername=self.bot.getMe()['username']),
             reply_markup={
                 'inline_keyboard':[[{
-                    'text':
-                        BTN_MSG['publish'],
-                    'switch_inline_query':
-                            'planning_{id}'.format(id=planning.pl_id)
+                    'text':BTN_MSG['publish'],
+                    'switch_inline_query':planning.inline_query_id()
                     }]]
                 }
             )
