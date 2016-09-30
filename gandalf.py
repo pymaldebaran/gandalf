@@ -53,7 +53,7 @@ __maintainer__ = "Pierre-Yves Martin"
 __email__ = "pym.aldebaran@gmail.com"
 __status__ = "Prototype"
 
-# unexported constasts used as pytest.main return codes
+# unexported constants used as pytest.main return codes
 # c.f. https://github.com/pytest-dev/pytest/blob/master/_pytest/main.py
 PYTEST_EXIT_OK = 0
 PYTEST_EXIT_TESTSFAILED = 1
@@ -66,21 +66,14 @@ TIMEOUT = 60*60  # sec
 
 DEFAULT_DATABASE_FILE = 'plannings.db'
 
-# Global variable used to give database file name to the threads.
-# It is initialized through the program --db argument.
-# Only serve() has write access to that variable to initialize it.
-DATABASE_FILE = None
-
 LOG_MSG = {
     'greetings':
         'My name is {botname} and you can contact me via @{botusername} and '
         'talk to me.',
     'goodbye':
         '\nParty is over ! Time to go to bed.',
-    'user_greetings':
-        'Hello {userfirstname}... are you doing?',
-    'user_goodbye':
-        'Goodbye {userfirstname}... it was nice seeing you.',
+    'goodbye':
+        'Goodbye... it was nice seeing you.',
     'db_file_created':
         'New database file <{dbfile}> created.',
     'db_file_deleted':
@@ -141,9 +134,14 @@ CHAT_MSG = {
         'You have currently {nb_plannings} plannings:\n\n'
         '{planning_list}',
     'planning_recap':
+        '*{title}*\n\n'
+        '{options}\n\n'
+        '👥 {nb_participants} people participated so far. '
+        '_Planning {planning_status}_.',
+    'planning_recap+':  # TODO use planning recap+ instead of planning recap
         '*{title}*\n'
         '_{description}_\n\n'
-        '{options}\n'
+        '{options}\n\n'
         '👥 {nb_participants} people participated so far. '
         '_Planning {planning_status}_.'
 }
@@ -162,12 +160,41 @@ class Planning:
         OPENED = "Opened"
         CLOSED = "Closed"
 
-    def __init__(self, pl_id, user_id, title, status):
-        """Create a new Planning."""
+    def __init__(self, pl_id, user_id, title, status, db_conn):
+        """
+        Create a new Planning.
+
+        Arguments:
+            pl_id -- id of the object in plannings table of the database.
+            user_id -- id of the user that created the planning. It comes from
+                       plannings table of the database.
+            title -- title of the planning.
+            status -- Planning.Status enum describing the current status of the
+                      planning object.
+            db_conn -- connexion to the database where the Planning will be
+                       saved.
+        """
+        # Preconditions
+        assert db_conn is not None
+
         self.pl_id = pl_id
         self.user_id = user_id
         self.title = title
         self.status = status
+        self._db_conn = db_conn
+
+
+    @property
+    def options(self):
+        """
+        Return options associated to the planning.
+
+        Returns:
+            List of Option object assciated to the planning extracted from the
+            database.
+        """
+        return Option.load_all_from_planning_id_from_db(
+            self._db_conn, self.pl_id)
 
 
     def short_description(self, num):
@@ -187,41 +214,41 @@ class Planning:
             planning=self)
 
 
-    def save_to_db(self, db_conn):
+    def full_description(self):
         """
-        Save the Planning object to the provided database.
+        Return a full str description of the planning including its options.
 
-        Arguments:
-            db_conn -- connexion to the database where the Planning will be
-                       saved.
+        Returns:
+            string describing the planning with detailed options and
+            contributors.
         """
-        # Preconditions
-        assert db_conn is not None
+        options_msg = '\n'.join(
+            [opt.short_description() for opt in self.options])
 
-        c = db_conn.cursor()
+        desc_msg = CHAT_MSG['planning_recap'].format(
+            title=self.title,
+            options=options_msg,
+            nb_participants=0,  # TODO replace with a number reteived from db
+            planning_status=self.status)
+
+        return desc_msg
+
+
+    def save_to_db(self):
+        """Save the Planning object to the provided database."""
+        c = self._db_conn.cursor()
         c.execute(
             """INSERT INTO plannings(user_id, title, status)
                 VALUES (?,?,?)""",
             (self.user_id, self.title, self.status))
-        db_conn.commit()
+        self._db_conn.commit()
         c.close()
 
 
-    def update_to_db(self, db_conn):
-        """
-        Update the Planning object status to the provided database.
-
-        Arguments:
-            db_conn -- connexion to the database where the Planning will be
-                       saved.
-        """
-        # Preconditions
-        assert db_conn is not None
-
-        pprint(self.status)
-
+    def update_to_db(self):
+        """Update the Planning object status to the provided database."""
         # Get a connexion to the database
-        c = db_conn.cursor()
+        c = self._db_conn.cursor()
 
         # Update the planning's status in the database
         c.execute("UPDATE plannings SET status=? WHERE pl_id=?",
@@ -234,31 +261,26 @@ class Planning:
             "from the database.".format(id=self.pl_id)
 
         # Once the results are checked we can commit and close cursor
-        db_conn.commit()
+        self._db_conn.commit()
         c.close()
 
 
-    def remove_from_db(self, db_conn):
+    def remove_from_db(self):
         """
         Remove the Planning object and dependancies from the database.
 
         Remove the Planning object and all the corresponding Option object
-        from the provided database.
-
-        Arguments:
-            db_conn -- connexion to the database from where the Planning will
-            be removed.
+        from the database.
 
         Exceptions:
             If none or many plannings would have been removed from the
-            database the database AssertionError is raised.
+            database AssertionError is raised.
         """
         # Preconditions
-        assert db_conn is not None
         assert self.pl_id is not None
 
         # Get a connexion to the database
-        c = db_conn.cursor()
+        c = self._db_conn.cursor()
 
         # First try to remove the option if any
         c.execute('DELETE FROM options WHERE pl_id=?', (self.pl_id,))
@@ -273,7 +295,7 @@ class Planning:
             "from the database.".format(id=self.pl_id)
 
         # Once the results are checked we can commit and close cursor
-        db_conn.commit()
+        self._db_conn.commit()
         c.close()
 
 
@@ -305,7 +327,7 @@ class Planning:
         c.close()
 
         # Create the Planning instances
-        plannings = [Planning(pl_id, user_id, title, status)\
+        plannings = [Planning(pl_id, user_id, title, status, db_conn)\
             for pl_id, user_id, title, status in rows]
 
         return plannings
@@ -352,7 +374,7 @@ class Planning:
         # we have found
         if rows:
             pl_id, user_id, title, status = rows[0]
-            p = Planning(pl_id, user_id, title, status)
+            p = Planning(pl_id, user_id, title, status, db_conn)
 
             # Postconditions
             assert p.pl_id is not None, "A Planning instance extracted from "\
@@ -375,35 +397,43 @@ class Option:
     because of a FOREIGN KEY constraint.
     """
 
-    def __init__(self, pl_id, txt):
+    def __init__(self, pl_id, txt, db_conn):
         """
         Create an Option instance providing all necessary information.
 
         Arguments:
             pl_id -- id of a planning to which the option belong.
             txt -- free form text of the option describing what it is.
-        """
-        self.pl_id = pl_id
-        self.txt = txt
-
-
-    def save_to_db(self, db_conn):
-        """
-        Save the Option object to the provided database.
-
-        Arguments:
             db_conn -- connexion to the database where the Planning will be
                        saved.
         """
         # Preconditions
         assert db_conn is not None
 
+        self.pl_id = pl_id
+        self.txt = txt
+        self._db_conn = db_conn
+
+
+    def save_to_db(self):
+        """Save the Option object to the provided database."""
         # Insert the new Option to the database
-        c = db_conn.cursor()
+        c = self._db_conn.cursor()
         c.execute("INSERT INTO options(pl_id, txt) VALUES (?,?)",
             (self.pl_id, self.txt))
-        db_conn.commit()
+        self._db_conn.commit()
         c.close()
+
+
+    def short_description(self):
+        """Return a short description of the option.
+
+        Returns:
+            String describing the option with text and number of contributors.
+        """
+        return OPTION_SHORT.format(
+                    description=self.txt,
+                    nb_participant=0)
 
 
     @staticmethod
@@ -431,7 +461,7 @@ class Option:
         c.close()
 
         # Let's build objects from those tuples
-        return [Option(my_id, my_txt) for my_id, my_txt in rows]
+        return [Option(my_id, my_txt, db_conn) for my_id, my_txt in rows]
 
 
 def is_command(text, cmd):
@@ -459,44 +489,22 @@ def is_command(text, cmd):
 class Planner(telepot.helper.ChatHandler):
     """Process messages to create persistent plannings."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, seed_tuple, db_file, **kwargs):
         """
         Create a new Planner.
 
         This is implicitly called when creating a new thread.
-        """
-        super(Planner, self).__init__(*args, **kwargs)
-        self._from = None  # User that started the chat with the bot
-        self._conn = None  # Connexion to the database
-
-
-    def open(self, initial_msg, seed, db=None):
-        """
-        Called at the 1st message of a user.
 
         Arguments:
-            initial_msg -- first message recieved by the Planner
-            seed -- seed of the delegator
-            db -- database file to use (for test purpose only)
+            seed_tuple -- seed of the delegator.
+            db_file -- database file to use.
         """
-        # Preconditions
-        assert self._from is None
-        assert self._conn is None
+        super(Planner, self).__init__(seed_tuple, **kwargs)
 
-        # Initialise the from attribute using the first message
-        self._from = initial_msg['from']
-
-        # Use default value only if db is not set
-        db = db or DATABASE_FILE
-        # Connect to the persistence database
-        self._conn = sqlite3.connect(db)
-
-        # Some feedback for the logs
-        print(LOG_MSG['user_greetings'].format(
-            userfirstname=self._from['first_name']))
+        self._db_file = db_file  # Database file name (for log & debug)
+        self._conn = sqlite3.connect(db_file)  # Connexion to the database
 
         # Post condition
-        assert self._from is not None
         assert self._conn is not None
 
 
@@ -506,27 +514,17 @@ class Planner(telepot.helper.ChatHandler):
 
         Timeout is mandatory to prevent infinity of threads to be created.
         """
-        # Preconditions
-        assert self._from is not None
-        assert self._conn is not None
-
         # Close the connexion to the database
         self._conn.close()
 
         # Some feedback for the logs
-        print(LOG_MSG['user_goodbye'].format(
-            userfirstname=self._from['first_name']))
+        print(LOG_MSG['goodbye'])
 
 
     def on_chat_message(self, msg):
         """React the the reception of a Telegram message."""
         # Raw printing of the message received
         pprint(msg)
-
-        # Preconditions
-        assert msg is not None
-        assert msg['from']['id'] == self._from['id'],\
-            "We should never process messages from another user."
 
         # Retreive basic information
         content_type, _, chat_id = telepot.glance(msg)
@@ -538,29 +536,30 @@ class Planner(telepot.helper.ChatHandler):
 
         # Now we can extract the text...
         text = msg['text']
+        from_user = msg['from']
 
         # Switching according to witch command is received
         if is_command(text, '/help'):
-            self.on_command_help()
+            self.on_command_help(from_user)
         elif is_command(text, '/new'):
-            self.on_command_new(text)
+            self.on_command_new(from_user, text)
         elif is_command(text, '/plannings'):
-            self.on_command_plannings()
+            self.on_command_plannings(from_user)
         elif is_command(text, '/cancel'):
-            self.on_command_cancel()
+            self.on_command_cancel(from_user)
         elif is_command(text, '/done'):
-            self.on_command_done()
+            self.on_command_done(from_user)
         # Not a command or not a recognized one
         else:
-            self.on_not_a_command(text)
+            self.on_not_a_command(from_user, text)
 
 
-    def on_command_help(self):
+    def on_command_help(self, from_user):
         """Handle the /help command by sending an help message."""
         self.sender.sendMessage(CHAT_MSG['help_answer'])
 
 
-    def on_command_new(self, text):
+    def on_command_new(self, from_user, text):
         """
         Handle the /new command by creating a new planning.
 
@@ -568,12 +567,8 @@ class Planner(telepot.helper.ChatHandler):
         text -- string containing the text of the message recieved (including
                 the /new command)
         """
-        # Precondition
-        assert self._conn is not None
-        assert self._from is not None
-
         # First check if there is not a planning under construction
-        if Planning.load_under_construction_from_db(self._from['id'], self._conn) is not None:
+        if Planning.load_under_construction_from_db(from_user['id'], self._conn) is not None:
             # Tell the user
             self.sender.sendMessage(CHAT_MSG['new_already_in_progress'])
             # Log some info for easy debugging
@@ -593,16 +588,17 @@ class Planner(telepot.helper.ChatHandler):
         # Create a new planning
         planning = Planning(
             pl_id=None,
-            user_id=self._from['id'],
+            user_id=from_user['id'],
             title=title,
-            status=Planning.Status.UNDER_CONSTRUCTION)
+            status=Planning.Status.UNDER_CONSTRUCTION,
+            db_conn=self._conn)
 
         # Save the new planning to the database
-        planning.save_to_db(self._conn)
+        planning.save_to_db()
 
         # Some feedback in the logs
         print(LOG_MSG['db_new_planning'].format(
-            dbfile=DATABASE_FILE,
+            dbfile=self._db_file,
             title=planning.title))
 
         # Send the answer
@@ -610,14 +606,10 @@ class Planner(telepot.helper.ChatHandler):
         self.sender.sendMessage(reply, parse_mode='Markdown')
 
 
-    def on_command_plannings(self):
+    def on_command_plannings(self, from_user):
         """Handle the /plannings command by retreiving all plannings."""
-        # Preconditions
-        assert self._conn is not None
-        assert self._from is not None
-
         # Retrieve plannings from database for current user
-        plannings = Planning.load_all_from_db(self._from['id'], self._conn)
+        plannings = Planning.load_all_from_db(from_user['id'], self._conn)
 
         # Prepare a list of the short desc of each planning
         planning_list = '\n\n'.join(
@@ -630,19 +622,17 @@ class Planner(telepot.helper.ChatHandler):
         self.sender.sendMessage(reply, parse_mode='Markdown')
 
 
-    def on_command_cancel(self):
+    def on_command_cancel(self, from_user):
         """
         Handle the /cancel command to cancel the current planning.
 
         This only works if there is a planning under construction i.e. after a
         /new command and before a /done command.
         """
-        # Preconditions
-        assert self._conn is not None
-        assert self._from is not None
-
         # Retreive the current planning if any
-        planning = Planning.load_under_construction_from_db(self._from['id'], self._conn)
+        planning = Planning.load_under_construction_from_db(
+            from_user['id'],
+            self._conn)
 
         # No planning... nothing to do
         if planning is None:
@@ -650,11 +640,11 @@ class Planner(telepot.helper.ChatHandler):
         else:
             # TODO ask a confirmation here using button
             # Remove the planning from the database
-            planning.remove_from_db(self._conn)
+            planning.remove_from_db()
             self.sender.sendMessage(CHAT_MSG['cancel_answer'])
 
 
-    def on_command_done(self):
+    def on_command_done(self, from_user):
         """
         Handle the /done command to finish the current planning.
 
@@ -662,35 +652,36 @@ class Planner(telepot.helper.ChatHandler):
         /new command and after the creation of at least one option for this
         planning.
         """
-        # Preconditions
-        assert self._conn is not None
-        assert self._from is not None
-
         # Retreive the current planning if any
-        planning = Planning.load_under_construction_from_db(self._from['id'], self._conn)
+        planning = Planning.load_under_construction_from_db(
+            from_user['id'],
+            self._conn)
 
         # No planning... nothing to do and return
         if planning is None:
             self.sender.sendMessage(CHAT_MSG['no_current_planning_answer'])
             return
 
-        # Retrievethe corresponding options
-        options = Option.load_all_from_planning_id_from_db(
-            self._conn, planning.pl_id)
-
         # No option... ask for one and return
-        if len(options) == 0 :
+        if len(planning.options) == 0 :
             self.sender.sendMessage(CHAT_MSG['done_error_answer'])
             return
 
         # Change planning state and update it in the database
         planning.status = Planning.Status.OPENED
-        planning.update_to_db(self._conn)
+        planning.update_to_db()
 
-        self.sender.sendMessage(CHAT_MSG['done_answer'])
+        # First we must send a recap of the opened planning...
+        self.sender.sendMessage(
+            planning.full_description(),
+            parse_mode='Markdown')
+
+        # ...then we send a confirmation message
+        self.sender.sendMessage(CHAT_MSG['done_answer'].format(
+            botusername=self.bot.getMe()['username']))
 
 
-    def on_not_a_command(self, text):
+    def on_not_a_command(self, from_user, text):
         """
         Handle any text message that is not a command or not a recognised one.
 
@@ -701,19 +692,17 @@ class Planner(telepot.helper.ChatHandler):
         Arguments:
         text -- string containing the text of the message recieved.
         """
-        # Preconditions
-        assert self._conn is not None
-        assert self._from is not None
-
         # Retreive the current planning if any
-        planning = Planning.load_under_construction_from_db(self._from['id'], self._conn)
+        planning = Planning.load_under_construction_from_db(
+            from_user['id'],
+            self._conn)
 
         if planning is not None:
             # We have a planning in progress... let's add the option to it !
-            opt = Option(planning.pl_id, text)
+            opt = Option(planning.pl_id, text, self._conn)
 
             # and save the option to database
-            opt.save_to_db(self._conn)
+            opt.save_to_db()
 
             self.sender.sendMessage(CHAT_MSG['option_answer'])
         else:
@@ -730,25 +719,20 @@ def serve(token, db, **kwargs):
         kwargs -- other command line arguments transmited after the "serve"
                   command.
     """
-    # We need write access to the global variable database to initialise it
-    global DATABASE_FILE
-    DATABASE_FILE = db
-
     # Initialise the bot
     delegation_pattern = pave_event_space()(
         per_chat_id(),
         create_open,
         Planner,
+        db,  # Param for Planner constructor
         timeout=TIMEOUT)
     bot = telepot.DelegatorBot(token, [delegation_pattern])
 
     # Get the bot info
     me = bot.getMe()
-    NAME = me["first_name"]
-    USERNAME = me["username"]
     print(LOG_MSG['greetings'].format(
-        botname=NAME,
-        botusername=USERNAME))
+        botname=me["first_name"],
+        botusername=me["username"]))
 
     # Receive messages and dispatch them to the Delegates
     try:

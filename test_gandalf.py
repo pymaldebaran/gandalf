@@ -7,7 +7,7 @@ from gandalf import is_command, createdb, Planner, Planning
 
 # Unit test utils
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 # Used to inspect databse content
 import sqlite3
@@ -88,6 +88,32 @@ class PlannerTester:
         self.db = db
         self._users_planner = {}  # user_id -> Planner
 
+
+    def _create_test_planner(self):
+        """Create a new Planner object configured for testing."""
+        # Dummy parameters
+        seed = MagicMock(), MagicMock(), MagicMock()
+        event_space = MagicMock()
+        timeout = 1
+
+        # Create the planner itself
+        planner = Planner(
+            seed_tuple=seed,
+            db_file=self.db,
+            event_space=event_space,
+            timeout=timeout)
+
+        # We replace the sendMessage() func by a mock to be able to query
+        # the number and argument of the sendMessage() calls
+        planner.sender.sendMessage = MagicMock()
+
+        # We force the planner's bot to have the good name
+        planner.bot.getMe = MagicMock(
+            return_value = {"username":"gandalf_planner_bot"})
+
+        return planner
+
+
     def get_planner(self, user):
         """Retreive the planner associated to the provided user."""
         assert user is not None
@@ -114,29 +140,12 @@ class PlannerTester:
 
         # If the user does not have a planner yet let's create it
         if user_id not in self._users_planner:
-            # Create a new Planner object for the user
-            seed = MagicMock(), MagicMock(), MagicMock()
-            event_space = MagicMock()
-            timeout = 1
-            planner = Planner(
-                seed_tuple=seed,
-                event_space=event_space,
-                timeout=timeout)
-            # We replace the sendMessage() func by a mock to be able to query
-            # the number and argument of the sendMessage() calls
-            planner.sender.sendMessage = MagicMock()
-
             # Put the planner in the dict
-            self._users_planner[user_id] = planner
-
-            # Open a chat (we need to provide the first message)
-            self._users_planner[user_id].open(
-                initial_msg=msg,
-                seed=seed,
-                db=self.db)
+            self._users_planner[user_id] = self._create_test_planner()
 
         # We have a user we can send the message
-        self._users_planner[user_id].on_chat_message(msg)
+        planner = self._users_planner.get(user_id, self._create_test_planner())
+        planner.on_chat_message(msg)
 
 
 def fake_msg(user, txt):
@@ -236,7 +245,7 @@ def test_help_command(init_planner_tester, users):
 
     # Test answer
     planner = planner_tester.get_planner(user)
-    planner.sender.sendMessage.call_count == 1
+    assert planner.sender.sendMessage.call_count == 1
     planner.sender.sendMessage.assert_called_once_with(
         'This bot will help you create planings. Use /new to create a '
         'planning here, then publish it to groups or send it to individual '
@@ -256,7 +265,7 @@ def test_new_command_starts_creation_of_a_planning(init_planner_tester, users):
 
     # Test answer
     planner = planner_tester.get_planner(user)
-    planner.sender.sendMessage.call_count == 1
+    assert planner.sender.sendMessage.call_count == 1
     planner.sender.sendMessage.assert_called_once_with(
         'You want to create a planning named *Fancy diner*. Send me a description'
         'or a question to ask to the participant. '
@@ -292,7 +301,7 @@ def test_new_command_without_title(init_planner_tester, users):
 
     # Test answer
     planner = planner_tester.get_planner(user)
-    planner.sender.sendMessage.call_count == 1
+    assert planner.sender.sendMessage.call_count == 1
     planner.sender.sendMessage.assert_called_once_with(
         'Sorry to create a planning you have give a title after the /new '
         'command. Like this :\n\n'
@@ -311,6 +320,43 @@ def test_new_command_without_title(init_planner_tester, users):
     assert len(rows) == 0, "No option should have been created."
 
 
+def test_done_command_show_a_planning_recap(init_planner_tester, users):
+    """Test what is sent by the bot after a valid /done command."""
+    db_test, cursor, planner_tester = init_planner_tester
+    user, _ = users
+
+    # Planning some stuff
+    planner_tester.send_message(user, "/new Fancy diner")
+    planner_tester.send_message(user, "1 Monday evening")
+    planner_tester.send_message(user, "2 Tuesday evening")
+    planner_tester.send_message(user, "3 Thursday evening")
+    planner_tester.send_message(user, "4 Saturday evening")
+
+    # We reset call count to test only next call
+    planner = planner_tester.get_planner(user)
+    planner.sender.sendMessage.reset_mock()
+
+    # And we are done with this planning
+    planner_tester.send_message(user, "/done")
+
+    # Test answer
+    assert planner.sender.sendMessage.call_count == 2
+    planner.sender.sendMessage.assert_has_calls(
+        [
+        call('*Fancy diner*\n\n'
+            '1 Monday evening - 👥 0\n'
+            '2 Tuesday evening - 👥 0\n'
+            '3 Thursday evening - 👥 0\n'
+            '4 Saturday evening - 👥 0\n\n'
+            '👥 0 people participated so far. _Planning Opened_.',
+            parse_mode='Markdown'),
+        call('👍 Planning created. You can now publish it to a group or send it '
+            'to your friends in a private message. To do this, tap the button '
+            'below or start your message in any other chat with '
+            '@gandalf_planner_bot and select one of your polls to send.')
+        ])
+
+
 def test_plannings_command_without_planning(init_planner_tester, users):
     """Test what happens when /new command is used without a title."""
     db_test, cursor, planner_tester = init_planner_tester
@@ -320,7 +366,7 @@ def test_plannings_command_without_planning(init_planner_tester, users):
 
     # Test answer
     planner = planner_tester.get_planner(user)
-    planner.sender.sendMessage.call_count == 1
+    assert planner.sender.sendMessage.call_count == 1
     planner.sender.sendMessage.assert_called_once_with(
         'You have currently 0 plannings:\n\n',
         parse_mode='Markdown')
@@ -347,7 +393,7 @@ def test_plannings_command_with_some_planning(init_planner_tester, users):
     planner_tester.send_message(joey, "/plannings")
 
     # Test answer
-    planner_joey.sender.sendMessage.call_count == 1
+    assert planner_joey.sender.sendMessage.call_count == 1
     planner_joey.sender.sendMessage.assert_called_once_with(
         'You have currently 2 plannings:\n\n'
         '*1*. *Fancy diner* - _Opened_\n\n'
@@ -362,7 +408,7 @@ def test_plannings_command_with_some_planning(init_planner_tester, users):
     planner_tester.send_message(chandler, "/plannings")
 
     # Test answer
-    planner_chandler.sender.sendMessage.call_count == 1
+    assert planner_chandler.sender.sendMessage.call_count == 1
     planner_chandler.sender.sendMessage.assert_called_once_with(
         'You have currently 1 plannings:\n\n'
         '*1*. *Lousy breakfast* - _Under construction_',
@@ -383,7 +429,9 @@ def test_can_create_a_planning(init_planner_tester, users):
     planner_tester.send_message(user, "/done")
 
     # Test answers
-    planner_tester.get_planner(user).sender.sendMessage.call_count == 6
+    # (one response for each message sent but the response to /done is made of
+    # two answers)
+    assert planner_tester.get_planner(user).sender.sendMessage.call_count == 7
 
     # Test the database content
 
@@ -427,7 +475,7 @@ def test_can_cancel_a_planning(init_planner_tester, users):
     planner_tester.send_message(user, "/cancel")
 
     # Test answers
-    planner_tester.get_planner(user).sender.sendMessage.call_count == 6
+    assert planner_tester.get_planner(user).sender.sendMessage.call_count == 6
 
     # Test the database content
 
