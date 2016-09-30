@@ -7,7 +7,7 @@ from gandalf import is_command, createdb, Planner, Planning
 
 # Unit test utils
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 # Used to inspect databse content
 import sqlite3
@@ -341,19 +341,20 @@ def test_done_command_show_a_planning_recap(init_planner_tester, users):
 
     # Test answer
     assert planner.sender.sendMessage.call_count == 2
-    planner.sender.sendMessage.assert_called_once_with(
-        '*Fancy diner*\n'
-        '1 Monday evening - 👥 0\n'
-        '2 Tuesday evening - 👥 0\n'
-        '3 Thursday evening - 👥 0\n'
-        '4 Saturday evening - 👥 0\n\n'
-        '👥 0 people participated so far. _Planning Opened_.',
-        parse_mode='Markdown')
-    planner.sender.sendMessage.assert_called_once_with(
-        '👍 Planning created. You can now publish it to a group or send it '
-        'to your friends in a private message. To do this, tap the button '
-        'below or start your message in any other chat with '
-        '@gandalf_planner_bot and select one of your polls to send.')
+    planner.sender.sendMessage.assert_has_calls(
+        [
+        call('*Fancy diner*\n'
+            '1 Monday evening - 👥 0\n'
+            '2 Tuesday evening - 👥 0\n'
+            '3 Thursday evening - 👥 0\n'
+            '4 Saturday evening - 👥 0\n\n'
+            '👥 0 people participated so far. _Planning Opened_.',
+            parse_mode='Markdown'),
+        call('👍 Planning created. You can now publish it to a group or send it '
+            'to your friends in a private message. To do this, tap the button '
+            'below or start your message in any other chat with '
+            '@gandalf_planner_bot and select one of your polls to send.')
+        ])
 
 
 def test_plannings_command_without_planning(init_planner_tester, users):
@@ -428,7 +429,9 @@ def test_can_create_a_planning(init_planner_tester, users):
     planner_tester.send_message(user, "/done")
 
     # Test answers
-    assert planner_tester.get_planner(user).sender.sendMessage.call_count == 6
+    # (one response for each message sent but the response to /done is made of
+    # two answers)
+    assert planner_tester.get_planner(user).sender.sendMessage.call_count == 7
 
     # Test the database content
 
