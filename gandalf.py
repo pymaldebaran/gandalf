@@ -222,12 +222,8 @@ class Planning:
             string describing the planning with detailed options and
             contributors.
         """
-        # TODO encapsulate this in Option.short_description()
-        options_msg = '\n'.join([
-                OPTION_SHORT.format(
-                    description=opt.txt,
-                    nb_participant=0)  # TODO replace with a number reteived from db
-                for opt in self.options])
+        options_msg = '\n'.join(
+            [opt.short_description() for opt in self.options])
 
         desc_msg = CHAT_MSG['planning_recap'].format(
             title=self.title,
@@ -427,6 +423,17 @@ class Option:
             (self.pl_id, self.txt))
         self._db_conn.commit()
         c.close()
+
+
+    def short_description(self):
+        """Return a short description of the option.
+
+        Returns:
+            String describing the option with text and number of contributors.
+        """
+        return OPTION_SHORT.format(
+                    description=self.txt,
+                    nb_participant=0)
 
 
     @staticmethod
