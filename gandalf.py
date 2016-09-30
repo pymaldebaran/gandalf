@@ -53,7 +53,7 @@ __maintainer__ = "Pierre-Yves Martin"
 __email__ = "pym.aldebaran@gmail.com"
 __status__ = "Prototype"
 
-# unexported constasts used as pytest.main return codes
+# unexported constants used as pytest.main return codes
 # c.f. https://github.com/pytest-dev/pytest/blob/master/_pytest/main.py
 PYTEST_EXIT_OK = 0
 PYTEST_EXIT_TESTSFAILED = 1
@@ -166,6 +166,7 @@ class Planning:
         self.user_id = user_id
         self.title = title
         self.status = status
+        # TODO add a property options that retreive options from db
 
 
     def short_description(self, num):
@@ -361,6 +362,7 @@ class Planning:
             return None
 
 
+# TODO move this class inside Planning class
 class Option:
     """
     Represent a possible option for a planning.
@@ -642,6 +644,22 @@ class Planner(telepot.helper.ChatHandler):
         planning.status = Planning.Status.OPENED
         planning.update_to_db(self._conn)
 
+        # First we must send a recap of the opened planning...
+        # TODO encapsulte this formating in a helper function/method
+        options_msg = '\n'.join([
+                OPTION_SHORT.format(
+                    description=opt.txt,
+                    nb_participant=0)  # TODO replace with a number reteived from db
+                for opt in options])
+
+        desc_msg = CHAT_MSG['planning_recap'].format(
+            title=planning.title,
+            options=options_msg,
+            nb_participants=0,  # TODO replace with a number reteived from db
+            planning_status=planning.status)
+        self.sender.sendMessage(desc_msg, parse_mode='Markdown')
+
+        # ...then we send a confirmation message
         self.sender.sendMessage(CHAT_MSG['done_answer'].format(
             botusername=self.bot.getMe()['username']))
 
