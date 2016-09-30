@@ -160,13 +160,41 @@ class Planning:
         OPENED = "Opened"
         CLOSED = "Closed"
 
-    def __init__(self, pl_id, user_id, title, status):
-        """Create a new Planning."""
+    def __init__(self, pl_id, user_id, title, status, db_conn):
+        """
+        Create a new Planning.
+
+        Arguments:
+            pl_id -- id of the object in plannings table of the database.
+            user_id -- id of the user that created the planning. It comes from
+                       plannings table of the database.
+            title -- title of the planning.
+            status -- Planning.Status enum describing the current status of the
+                      planning object.
+            db_conn -- connexion to the database where the Planning will be
+                       saved.
+        """
+        # Preconditions
+        assert db_conn is not None
+
         self.pl_id = pl_id
         self.user_id = user_id
         self.title = title
         self.status = status
-        # TODO add a property options that retreive options from db
+        self._db_conn = db_conn
+
+
+    @property
+    def options(self):
+        """
+        Return options associated to the planning.
+
+        Returns:
+            List of Option object assciated to the planning extracted from the
+            database.
+        """
+        return Option.load_all_from_planning_id_from_db(
+            self._db_conn, self.pl_id)
 
 
     def short_description(self, num):
@@ -186,41 +214,21 @@ class Planning:
             planning=self)
 
 
-    def save_to_db(self, db_conn):
-        """
-        Save the Planning object to the provided database.
-
-        Arguments:
-            db_conn -- connexion to the database where the Planning will be
-                       saved.
-        """
-        # Preconditions
-        assert db_conn is not None
-
-        c = db_conn.cursor()
+    def save_to_db(self):
+        """Save the Planning object to the provided database."""
+        c = self._db_conn.cursor()
         c.execute(
             """INSERT INTO plannings(user_id, title, status)
                 VALUES (?,?,?)""",
             (self.user_id, self.title, self.status))
-        db_conn.commit()
+        self._db_conn.commit()
         c.close()
 
 
-    def update_to_db(self, db_conn):
-        """
-        Update the Planning object status to the provided database.
-
-        Arguments:
-            db_conn -- connexion to the database where the Planning will be
-                       saved.
-        """
-        # Preconditions
-        assert db_conn is not None
-
-        pprint(self.status)
-
+    def update_to_db(self):
+        """Update the Planning object status to the provided database."""
         # Get a connexion to the database
-        c = db_conn.cursor()
+        c = self._db_conn.cursor()
 
         # Update the planning's status in the database
         c.execute("UPDATE plannings SET status=? WHERE pl_id=?",
@@ -233,31 +241,26 @@ class Planning:
             "from the database.".format(id=self.pl_id)
 
         # Once the results are checked we can commit and close cursor
-        db_conn.commit()
+        self._db_conn.commit()
         c.close()
 
 
-    def remove_from_db(self, db_conn):
+    def remove_from_db(self):
         """
         Remove the Planning object and dependancies from the database.
 
         Remove the Planning object and all the corresponding Option object
-        from the provided database.
-
-        Arguments:
-            db_conn -- connexion to the database from where the Planning will
-            be removed.
+        from the database.
 
         Exceptions:
             If none or many plannings would have been removed from the
-            database the database AssertionError is raised.
+            database AssertionError is raised.
         """
         # Preconditions
-        assert db_conn is not None
         assert self.pl_id is not None
 
         # Get a connexion to the database
-        c = db_conn.cursor()
+        c = self._db_conn.cursor()
 
         # First try to remove the option if any
         c.execute('DELETE FROM options WHERE pl_id=?', (self.pl_id,))
@@ -272,7 +275,7 @@ class Planning:
             "from the database.".format(id=self.pl_id)
 
         # Once the results are checked we can commit and close cursor
-        db_conn.commit()
+        self._db_conn.commit()
         c.close()
 
 
@@ -304,7 +307,7 @@ class Planning:
         c.close()
 
         # Create the Planning instances
-        plannings = [Planning(pl_id, user_id, title, status)\
+        plannings = [Planning(pl_id, user_id, title, status, db_conn)\
             for pl_id, user_id, title, status in rows]
 
         return plannings
@@ -351,7 +354,7 @@ class Planning:
         # we have found
         if rows:
             pl_id, user_id, title, status = rows[0]
-            p = Planning(pl_id, user_id, title, status)
+            p = Planning(pl_id, user_id, title, status, db_conn)
 
             # Postconditions
             assert p.pl_id is not None, "A Planning instance extracted from "\
@@ -560,10 +563,11 @@ class Planner(telepot.helper.ChatHandler):
             pl_id=None,
             user_id=from_user['id'],
             title=title,
-            status=Planning.Status.UNDER_CONSTRUCTION)
+            status=Planning.Status.UNDER_CONSTRUCTION,
+            db_conn=self._conn)
 
         # Save the new planning to the database
-        planning.save_to_db(self._conn)
+        planning.save_to_db()
 
         # Some feedback in the logs
         print(LOG_MSG['db_new_planning'].format(
@@ -609,7 +613,7 @@ class Planner(telepot.helper.ChatHandler):
         else:
             # TODO ask a confirmation here using button
             # Remove the planning from the database
-            planning.remove_from_db(self._conn)
+            planning.remove_from_db()
             self.sender.sendMessage(CHAT_MSG['cancel_answer'])
 
 
@@ -631,18 +635,14 @@ class Planner(telepot.helper.ChatHandler):
             self.sender.sendMessage(CHAT_MSG['no_current_planning_answer'])
             return
 
-        # Retrievethe corresponding options
-        options = Option.load_all_from_planning_id_from_db(
-            self._conn, planning.pl_id)
-
         # No option... ask for one and return
-        if len(options) == 0 :
+        if len(planning.options) == 0 :
             self.sender.sendMessage(CHAT_MSG['done_error_answer'])
             return
 
         # Change planning state and update it in the database
         planning.status = Planning.Status.OPENED
-        planning.update_to_db(self._conn)
+        planning.update_to_db()
 
         # First we must send a recap of the opened planning...
         # TODO encapsulte this formating in a helper function/method
@@ -650,7 +650,7 @@ class Planner(telepot.helper.ChatHandler):
                 OPTION_SHORT.format(
                     description=opt.txt,
                     nb_participant=0)  # TODO replace with a number reteived from db
-                for opt in options])
+                for opt in planning.options])
 
         desc_msg = CHAT_MSG['planning_recap'].format(
             title=planning.title,
