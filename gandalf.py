@@ -43,6 +43,7 @@ import pytest
 # c.f. https://telepot.readthedocs.io/en/latest/
 import telepot
 from telepot.delegate import pave_event_space, per_chat_id, create_open
+from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton
 
 __version__ = "0.1.0"
 __author__ = "Pierre-Yves Martin"
@@ -699,12 +700,13 @@ class Planner(telepot.helper.ChatHandler):
         self.sender.sendMessage(
             CHAT_MSG['done_answer'].format(
                 botusername=self.bot.getMe()['username']),
-            reply_markup={
-                'inline_keyboard':[[{
-                    'text':BTN_MSG['publish'],
-                    'switch_inline_query':planning.inline_query_id()
-                    }]]
-                }
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[
+                    InlineKeyboardButton(
+                        text=BTN_MSG['publish'],
+                        switch_inline_query=planning.inline_query_id()
+                    )]]
+                )
             )
 
 
