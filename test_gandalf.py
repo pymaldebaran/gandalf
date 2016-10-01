@@ -3,7 +3,7 @@
 """Test file for the gandalf poject."""
 
 # Gandalf module to test
-from gandalf import is_command, createdb, Planner, Planning
+from gandalf import is_command, createdb, PlannerChatHandler, Planning
 
 # Unit test utils
 import pytest
@@ -78,29 +78,29 @@ def test_createdb(tmpdir):
     assert ('txt', 'TEXT') == plannings_columns[1][1:3]
 
 
-class PlannerTester:
+class PlannerChatHandlerTester:
     """
-    Helper class that makes the tests of Planner scenario easier.
+    Helper class that makes the tests of PlannerChatHandler scenario easier.
 
     Once initialized this object allows you to just call send_message() method
     many times to simulate a discussion with the bot.
     """
 
     def __init__(self, db):
-        """Create a ready-to-use PlannerTester instance."""
+        """Create a ready-to-use PlannerChatHandlerTester instance."""
         self.db = db
-        self._users_planner = {}  # user_id -> Planner
+        self._users_planner = {}  # user_id -> PlannerChatHandler
 
 
     def _create_test_planner(self):
-        """Create a new Planner object configured for testing."""
+        """Create a new PlannerChatHandler object configured for testing."""
         # Dummy parameters
         seed = MagicMock(), MagicMock(), MagicMock()
         event_space = MagicMock()
         timeout = 1
 
         # Create the planner itself
-        planner = Planner(
+        planner = PlannerChatHandler(
             seed_tuple=seed,
             db_file=self.db,
             event_space=event_space,
@@ -176,7 +176,7 @@ def fake_msg(user, txt):
 
 @pytest.fixture()
 def init_planner_tester(tmpdir):
-    """Setup and Teardown for all tests about the Planner class."""
+    """Setup and Teardown for all tests about the PlannerChatHandler class."""
     # Create a database for the test
     db_test = str(tmpdir.join('test.db'))
     createdb(db=db_test)
@@ -184,7 +184,7 @@ def init_planner_tester(tmpdir):
     cursor = conn.cursor()
 
     # Create easy to use planner tester
-    planner_tester = PlannerTester(db_test)
+    planner_tester = PlannerChatHandlerTester(db_test)
 
     yield db_test, cursor, planner_tester
 

@@ -42,8 +42,10 @@ import pytest
 # Telegram python binding
 # c.f. https://telepot.readthedocs.io/en/latest/
 import telepot
-from telepot.delegate import pave_event_space, per_chat_id, create_open
-from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton
+from telepot.delegate import pave_event_space, per_chat_id, per_inline_from_id
+from telepot.delegate import create_open
+from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton,\
+    InlineQueryResultArticle, InputTextMessageContent
 
 __version__ = "0.1.0"
 __author__ = "Pierre-Yves Martin"
@@ -158,6 +160,9 @@ OPTION_SHORT = '{description} - 👥 {nb_participant}'
 class Planning:
     """Represent a user created planning."""
 
+    # Prefix used when generating inline query id
+    INLINE_QUERY_PREFIX = "planning_"
+
     class Status(str, Enum):
         """Represent the different possible status for a planning."""
 
@@ -246,7 +251,9 @@ class Planning:
         This string can be used to create Telegram inline query to reference
         this peticular planning.
         """
-        return 'planning_{pl_id}'.format(pl_id=self.pl_id)
+        return '{prefix}{pl_id}'.format(
+            prefix=Planning.INLINE_QUERY_PREFIX,
+            pl_id=self.pl_id)
 
 
     def save_to_db(self):
@@ -501,12 +508,12 @@ def is_command(text, cmd):
     return len(text.strip()) > 0 and text.split()[0] == cmd
 
 
-class Planner(telepot.helper.ChatHandler):
-    """Process messages to create persistent plannings."""
+class PlannerChatHandler(telepot.helper.ChatHandler):
+    """Process chat messages to create persistent plannings."""
 
     def __init__(self, seed_tuple, db_file, **kwargs):
         """
-        Create a new Planner.
+        Create a new PlannerChatHandler.
 
         This is implicitly called when creating a new thread.
 
@@ -514,7 +521,7 @@ class Planner(telepot.helper.ChatHandler):
             seed_tuple -- seed of the delegator.
             db_file -- database file to use.
         """
-        super(Planner, self).__init__(seed_tuple, **kwargs)
+        super(PlannerChatHandler, self).__init__(seed_tuple, **kwargs)
 
         # Database file name (for log & debug)
         self._db_file = db_file
@@ -523,6 +530,8 @@ class Planner(telepot.helper.ChatHandler):
         self._conn = sqlite3.connect(
             db_file,
             check_same_thread=False)  # TODO remove once switched to asyncio
+
+        print("PlannerChatHandler instance created.")
 
         # Post condition
         assert self._conn is not None
@@ -533,6 +542,8 @@ class Planner(telepot.helper.ChatHandler):
         Called after timeout.
 
         Timeout is mandatory to prevent infinity of threads to be created.
+
+        Part of the telepot.helper.ChatHandler API.
         """
         # Close the connexion to the database
         self._conn.close()
@@ -542,7 +553,11 @@ class Planner(telepot.helper.ChatHandler):
 
 
     def on_chat_message(self, msg):
-        """React the the reception of a Telegram message."""
+        """
+        React the the reception of a Telegram message.
+
+        Part of the telepot.helper.ChatHandler API.
+        """
         # Raw printing of the message received
         pprint(msg)
 
@@ -739,6 +754,98 @@ class Planner(telepot.helper.ChatHandler):
             self.sender.sendMessage(CHAT_MSG['dont_understand'])
 
 
+class PlannerInlineHandler(
+    telepot.helper.InlineUserHandler,  # To handle inline query/response
+    telepot.helper.AnswererMixin):  # To have an integrated Answerer object
+    """Process inline messages to show plannings in chats."""
+
+    def __init__(self, seed_tuple, db_file, **kwargs):
+        """
+        Create a new PlannerInlineHandler.
+
+        This is implicitly called when creating a new thread.
+
+        Arguments:
+            seed_tuple -- seed of the delegator.
+            db_file -- database file to use.
+        """
+        super(PlannerInlineHandler, self).__init__(seed_tuple, **kwargs)
+
+        # Database file name (for log & debug)
+        self._db_file = db_file
+
+        # Connexion to the database
+        self._conn = sqlite3.connect(
+            db_file,
+            check_same_thread=False)  # TODO remove once switched to asyncio
+
+        print("PlannerInlineHandler instance created.")
+
+        # Post condition
+        assert self._conn is not None
+
+
+    def on_close(self, ex):
+        """
+        Called after timeout.
+
+        Timeout is mandatory to prevent infinity of threads to be created.
+
+        Part of the telepot.helper.ChatHandler API.
+        """
+        # Close the connexion to the database
+        self._conn.close()
+
+        # Some feedback for the logs
+        print(LOG_MSG['goodbye'])
+
+
+    def on_inline_query(self, msg):
+        """
+        React to the reception of a Telegram inline query.
+
+        Part of the telepot.helper.InlineUserHandler API.
+        """
+        def compute_answer():
+            """
+            Helper function to compute the result for the Answerer.
+
+            c.f. https://telepot.readthedocs.io/en/latest/#inline-handler-per-user
+            """
+            # Raw printing of the message received
+            pprint(msg)
+
+            # Retreive the major info from the message
+            query_id, from_id, query_string = telepot.glance(
+                msg=msg,
+                flavor='inline_query')
+            print('Inline Query:', query_id, from_id, query_string)
+
+            # Trivial case: the query does look like a planning inline query id
+            if not query_string.startswith(Planning.INLINE_QUERY_PREFIX):
+                # We return an empty answer
+                return []
+            else:
+                # TODO replace with a real answer
+                # TODO check if InlineQueryResultArticle is the best object for
+                #      the job
+                # Search for a corresponding planning
+                articles = [
+                    InlineQueryResultArticle(
+                        id='abc',
+                        title='ABC',
+                        input_message_content=InputTextMessageContent(
+                            message_text='Hello'
+                        )
+                       )
+                    ]
+
+                return articles
+
+        # Use the Answerer to handle the message and reply to them
+        self.answerer.answer(msg, compute_answer)
+
+
 def serve(token, db, **kwargs):
     """
     Start the bot and launch the listenning loop.
@@ -749,15 +856,23 @@ def serve(token, db, **kwargs):
                   command.
     """
     # Initialise the bot
-    delegation_pattern = pave_event_space()(
-        per_chat_id(),
-        create_open,
-        Planner,
-        db,  # Param for Planner constructor
-        timeout=TIMEOUT)
-    bot = telepot.DelegatorBot(token, [delegation_pattern])
+    delegation_pattern = [
+        pave_event_space()(
+            per_chat_id(),
+            create_open,
+            PlannerChatHandler,
+            db,  # Param for PlannerChatHandler constructor
+            timeout=TIMEOUT),
+        pave_event_space()(
+            per_inline_from_id(),
+            create_open,
+            PlannerInlineHandler,
+            db,  # Param for PlannerInlineHandler constructor
+            timeout=TIMEOUT)
+        ]
+    bot = telepot.DelegatorBot(token, delegation_pattern)
 
-    # Get the bot info
+    # Get the bot info and greet the user
     me = bot.getMe()
     print(LOG_MSG['greetings'].format(
         botname=me["first_name"],
