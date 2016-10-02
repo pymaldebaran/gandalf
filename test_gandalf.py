@@ -3,7 +3,9 @@
 """Test file for the gandalf poject."""
 
 # Gandalf module to test
-from gandalf import is_command, createdb, PlannerChatHandler, Planning
+from gandalf import createdb, PlannerChatHandler
+from planning import Planning
+from handlers import is_command
 
 # Unit test utils
 import pytest
