@@ -13,7 +13,12 @@ from unittest.mock import MagicMock, call
 import sqlite3
 
 # Used to mimic answers of the bot through Mock object calls
-from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton
+from telepot.namedtuple import InlineKeyboardMarkup
+from telepot.namedtuple import InlineKeyboardButton
+
+# Used to easily contruct fake messages
+from telepot.namedtuple import Message, User, Chat
+import time
 
 def test_is_command():
     """Test all interesting cases for the is_command() function."""
@@ -151,27 +156,75 @@ class PlannerChatHandlerTester:
         planner.on_chat_message(msg)
 
 
-# TODO use telepot.namedtuple.Message as soon as the from_ bug is closed...
+def FakeMessage(**kwargs):
+    """
+    Helper pseudo type to create fake Telegram messages.
+
+    Returns:
+        A dict compatible with Telegram definition of a message.
+    """
+    # Preconditions
+    assert all([key in Message._fields for key in kwargs])
+    assert 'from_' in kwargs
+
+    # Work around the fact from is a reserved word and can't be used as
+    # parameter name
+    kwargs['from'] = kwargs['from_']
+    del kwargs['from_']
+
+    return kwargs
+
+
+def FakeUser(**kwargs):
+    """
+    Helper pseudo type to create fake Telegram user.
+
+    Returns:
+        A dict compatible with Telegram definition of a message.
+    """
+    # Preconditions
+    assert all([key in User._fields for key in kwargs])
+    assert 'first_name' in kwargs
+    assert 'id' not in kwargs
+
+    kwargs['id'] = hash(kwargs['first_name'])
+
+    return kwargs
+
+
+def FakeChat(**kwargs):
+    """
+    Helper pseudo type to create fake Telegram chat.
+
+    Returns:
+        A dict compatible with Telegram definition of a message.
+    """
+    # Preconditions
+    assert all([key in Chat._fields for key in kwargs])
+    assert 'id' not in kwargs
+
+    # KISS way to have a unique id for each chat
+    kwargs['id'] = hash(time.time())
+
+    return kwargs
+
+
 def fake_msg(user, txt):
     """
     Helper function to create fake messages for test purpose.
 
     Arguments:
-        user -- dist describing the user sending the message.
+        user -- dict describing the user sending the message.
                 It must mimics a Telegram User description.
         txt -- text content of the wannabe message.
 
     Returns:
         a dict object that looks enough like an real telegram message.
     """
-    return {
-        'chat':{
-            'id':user['id']*100+1,  # KISS way to have a unique id for each chat
-            'type':'text'
-        },
-        'from':user,
-        'text':txt
-    }
+    return FakeMessage(
+        chat=FakeChat(type='text'),
+        from_=user,
+        text=txt)
 
 
 @pytest.fixture()
@@ -196,19 +249,15 @@ def init_planner_tester(tmpdir):
 @pytest.fixture()
 def users():
     """Setup that gives some users for sending messages."""
-    joey = {
-        'id':1234567890,
-        'first_name':'Joey',
-        'last_name':'Tribbiani',
-        'username':'@friendsjoey'
-    }
+    joey = FakeUser(
+        first_name='Joey',
+        last_name='Tribbiani',
+        username='@friendsjoey')
 
-    chandler = {
-        'id':1111111111,
-        'first_name':'Chandler',
-        'last_name':'Bing',
-        'username':'@friendschandler'
-    }
+    chandler = FakeUser(
+        first_name='Chandler',
+        last_name='Bing',
+        username='@friendschandler')
 
     return joey, chandler
 
