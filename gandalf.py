@@ -44,8 +44,11 @@ import pytest
 import telepot
 from telepot.delegate import pave_event_space, per_chat_id, per_inline_from_id
 from telepot.delegate import create_open
-from telepot.namedtuple import InlineKeyboardMarkup, InlineKeyboardButton,\
-    InlineQueryResultArticle, InputTextMessageContent
+from telepot.namedtuple import InlineKeyboardMarkup
+from telepot.namedtuple import InlineKeyboardButton
+from telepot.namedtuple import InlineQueryResultArticle
+from telepot.namedtuple import InputTextMessageContent
+from telepot.namedtuple import Message
 
 __version__ = "0.1.0"
 __author__ = "Pierre-Yves Martin"
@@ -569,9 +572,12 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
             self.sender.sendMessage(CHAT_MSG['dont_understand'])
             return
 
+        # Convert message to a convenient namedtuple
+        msg = Message(**msg)
+
         # Now we can extract the text...
-        text = msg['text']
-        from_user = msg['from']
+        text = msg.text
+        from_user = msg.from_
 
         # Switching according to witch command is received
         if is_command(text, '/help'):
@@ -590,7 +596,13 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
 
 
     def on_command_help(self, from_user):
-        """Handle the /help command by sending an help message."""
+        """
+        Handle the /help command by sending an help message.
+
+        Arguments:
+            from_user -- User namedtuple representing the user thant sent the
+                         command
+        """
         self.sender.sendMessage(CHAT_MSG['help_answer'])
 
 
@@ -599,11 +611,16 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
         Handle the /new command by creating a new planning.
 
         Arguments:
-        text -- string containing the text of the message recieved (including
+            from_user -- User namedtuple representing the user thant sent the
+                         command
+            text -- string containing the text of the message recieved (including
                 the /new command)
         """
         # First check if there is not a planning under construction
-        if Planning.load_under_construction_from_db(from_user['id'], self._conn) is not None:
+        under_construction = Planning.load_under_construction_from_db(
+            from_user.id,
+            self._conn)
+        if under_construction is not None:
             # Tell the user
             self.sender.sendMessage(CHAT_MSG['new_already_in_progress'])
             # Log some info for easy debugging
@@ -623,7 +640,7 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
         # Create a new planning
         planning = Planning(
             pl_id=None,
-            user_id=from_user['id'],
+            user_id=from_user.id,
             title=title,
             status=Planning.Status.UNDER_CONSTRUCTION,
             db_conn=self._conn)
@@ -642,9 +659,15 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
 
 
     def on_command_plannings(self, from_user):
-        """Handle the /plannings command by retreiving all plannings."""
+        """
+        Handle the /plannings command by retreiving all plannings.
+
+        Arguments:
+            from_user -- User namedtuple representing the user thant sent the
+                         command
+        """
         # Retrieve plannings from database for current user
-        plannings = Planning.load_all_from_db(from_user['id'], self._conn)
+        plannings = Planning.load_all_from_db(from_user.id, self._conn)
 
         # Prepare a list of the short desc of each planning
         planning_list = '\n\n'.join(
@@ -663,10 +686,14 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
 
         This only works if there is a planning under construction i.e. after a
         /new command and before a /done command.
+
+        Arguments:
+            from_user -- User namedtuple representing the user thant sent the
+                         command
         """
         # Retreive the current planning if any
         planning = Planning.load_under_construction_from_db(
-            from_user['id'],
+            from_user.id,
             self._conn)
 
         # No planning... nothing to do
@@ -686,10 +713,14 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
         This only works if there is a planning under construction i.e. after a
         /new command and after the creation of at least one option for this
         planning.
+
+        Arguments:
+            from_user -- User namedtuple representing the user thant sent the
+                         command
         """
         # Retreive the current planning if any
         planning = Planning.load_under_construction_from_db(
-            from_user['id'],
+            from_user.id,
             self._conn)
 
         # No planning... nothing to do and return
@@ -734,11 +765,13 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
         Any other case trigger a "I don't understand" message.
 
         Arguments:
-        text -- string containing the text of the message recieved.
+            from_user -- User namedtuple representing the user thant sent the
+                         command
+            text -- string containing the text of the message recieved.
         """
         # Retreive the current planning if any
         planning = Planning.load_under_construction_from_db(
-            from_user['id'],
+            from_user.id,
             self._conn)
 
         if planning is not None:
