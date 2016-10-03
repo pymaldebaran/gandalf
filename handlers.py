@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """Gandalf bot Telegram protocol handlers."""
 
 # For database access snce we need data persistence
@@ -28,7 +28,11 @@ _LOG_MSG = {
         'Planning "{title}" added to database file <{dbfile}>.',
     'planning_already_in_progress':
         'Impossible to create a new planning, there is already a planning '
-        'in progress.'
+        'in progress.',
+    'inline_received':
+        'Inline message received.',
+    'callback_received':
+        'Callback query received with query data: <{data}>.'
 }
 
 _CHAT_MSG = {
@@ -139,7 +143,6 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
         # Post condition
         assert self._conn is not None
 
-
     def on_close(self, ex):
         """
         Called after timeout.
@@ -153,7 +156,6 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
 
         # Some feedback for the logs
         print(_LOG_MSG['closing'].format(handler=PlannerChatHandler.__name__))
-
 
     def on_chat_message(self, msg):
         """
@@ -194,7 +196,6 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
         else:
             self.on_not_a_command(from_user, text)
 
-
     def on_command_help(self, from_user):
         """
         Handle the /help command by sending an help message.
@@ -205,7 +206,6 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
         """
         self.sender.sendMessage(_CHAT_MSG['help_answer'])
 
-
     def on_command_new(self, from_user, text):
         """
         Handle the /new command by creating a new planning.
@@ -213,8 +213,8 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
         Arguments:
             from_user -- User namedtuple representing the user thant sent the
                          command
-            text -- string containing the text of the message recieved (including
-                the /new command)
+            text -- string containing the text of the message recieved
+                (including the /new command)
         """
         # First check if there is not a planning under construction
         under_construction = Planning.load_under_construction_from_db(
@@ -257,7 +257,6 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
         reply = _CHAT_MSG['new_answer'].format(title=title)
         self.sender.sendMessage(reply, parse_mode='Markdown')
 
-
     def on_command_plannings(self, from_user):
         """
         Handle the /plannings command by retreiving all plannings.
@@ -278,7 +277,6 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
             nb_plannings=len(plannings),
             planning_list=planning_list)
         self.sender.sendMessage(reply, parse_mode='Markdown')
-
 
     def on_command_cancel(self, from_user):
         """
@@ -305,7 +303,6 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
             planning.remove_from_db()
             self.sender.sendMessage(_CHAT_MSG['cancel_answer'])
 
-
     def on_command_done(self, from_user):
         """
         Handle the /done command to finish the current planning.
@@ -329,7 +326,7 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
             return
 
         # No option... ask for one and return
-        if len(planning.options) == 0 :
+        if len(planning.options) == 0:
             self.sender.sendMessage(_CHAT_MSG['done_error_answer'])
             return
 
@@ -354,7 +351,6 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
                     )]]
                 )
             )
-
 
     def on_not_a_command(self, from_user, text):
         """
@@ -388,8 +384,9 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
 
 
 class PlannerInlineHandler(
-    telepot.helper.InlineUserHandler,  # To handle inline query/response
-    telepot.helper.AnswererMixin):  # To have an integrated Answerer object
+        telepot.helper.InlineUserHandler,  # Handles inline query/response
+        telepot.helper.AnswererMixin,  # Integrate Answerer object
+        telepot.helper.InterceptCallbackQueryMixin):  # Handles callback query
     """Process inline messages to show plannings in chats."""
 
     def __init__(self, seed_tuple, db_file, **kwargs):
@@ -418,7 +415,6 @@ class PlannerInlineHandler(
         # Post condition
         assert self._conn is not None
 
-
     def on_close(self, ex):
         """
         Called after timeout.
@@ -433,7 +429,6 @@ class PlannerInlineHandler(
         # Some feedback for the logs
         print(_LOG_MSG['closing'].format(handler=PlannerChatHandler.__name__))
 
-
     def on_inline_query(self, msg):
         """
         React to the reception of a Telegram inline query.
@@ -444,7 +439,7 @@ class PlannerInlineHandler(
             """
             Helper function to compute the result for the Answerer.
 
-            c.f. https://telepot.readthedocs.io/en/latest/#inline-handler-per-user
+            https://telepot.readthedocs.io/en/latest/#inline-handler-per-user
             """
             # Raw printing of the message received
             pprint(msg)
@@ -461,16 +456,41 @@ class PlannerInlineHandler(
                 return []
             else:
                 # TODO replace with a real answer
-                # TODO check if InlineQueryResultArticle is the best object for
-                #      the job
                 # Search for a corresponding planning
                 articles = [
                     InlineQueryResultArticle(
+                        type='article',
                         id='abc',
                         title='ABC',
+                        description='The evident first choice, why bother?',
                         input_message_content=InputTextMessageContent(
-                            message_text='Hello'
-                        )
+                            message_text='First choice'),
+                        reply_markup=InlineKeyboardMarkup(
+                            inline_keyboard=[[
+                                InlineKeyboardButton(
+                                    text='linuxfr',
+                                    url='https://linuxfr.org'),
+                                InlineKeyboardButton(
+                                    text='NextInpact',
+                                    url='https://nextinpact.com'),
+                                ]])
+                       ),
+                    InlineQueryResultArticle(
+                        type='article',
+                        id='def',
+                        title='DEF',
+                        description='The second choice... is it the good one?',
+                        input_message_content=InputTextMessageContent(
+                            message_text='Second choice'),
+                        reply_markup=InlineKeyboardMarkup(
+                            inline_keyboard=[
+                                [InlineKeyboardButton(
+                                    text='vote gentil',
+                                    callback_data='vote un')],
+                                [InlineKeyboardButton(
+                                    text='vote méchant',
+                                    callback_data='vote deux')],
+                                ])
                        )
                     ]
 
@@ -478,3 +498,30 @@ class PlannerInlineHandler(
 
         # Use the Answerer to handle the message and reply to them
         self.answerer.answer(msg, compute_answer)
+
+    def on_chosen_inline_result(self, msg):
+        """
+        React to the selection of a peticular inline result.
+
+        Part of the telepot.helper.InlineUserHandler API.
+        """
+        print(_LOG_MSG['inline_received'])
+        pprint(msg)
+        # We do nothing in particular... but the fnction need to be present
+
+    def on_callback_query(self, msg):
+        """
+        React to the click on a callback button.
+
+        Part of the telepot.helper.InlineUserHandler API.
+        """
+        # Get the basic infos from the message
+        query_id, from_id, query_data = telepot.glance(
+            msg, flavor='callback_query')
+
+        # Some logging
+        print(_LOG_MSG['callback_received'].format(data=query_data))
+        pprint(msg)
+
+        # Show confirmation
+        self.bot.answerCallbackQuery(query_id, text='Ok')

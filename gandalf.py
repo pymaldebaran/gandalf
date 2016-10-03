@@ -37,7 +37,7 @@ import pytest
 # c.f. https://telepot.readthedocs.io/en/latest/
 import telepot
 from telepot.delegate import pave_event_space, per_chat_id, per_inline_from_id
-from telepot.delegate import create_open
+from telepot.delegate import create_open, intercept_callback_query_origin
 
 # Handlers for the Telegram protocol
 from handlers import PlannerChatHandler
@@ -95,7 +95,7 @@ def serve(token, db, **kwargs):
             PlannerChatHandler,
             db,  # Param for PlannerChatHandler constructor
             timeout=TIMEOUT),
-        pave_event_space()(
+        intercept_callback_query_origin(pave_event_space())(
             per_inline_from_id(),
             create_open,
             PlannerInlineHandler,
