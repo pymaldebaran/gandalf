@@ -48,7 +48,7 @@ _CHAT_MSG = {
         'Sorry I did not understand... try /help to see how you should talk '
         'to me.',
     'new_answer':
-        'You want to create a planning named *{title}*. Send me a description'
+        'You want to create a planning named *{title}*. Send me a description '
         'or a question to ask to the participant. '
         '/cancel to abort creation.',
     'new_error_answer':

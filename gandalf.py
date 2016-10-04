@@ -33,6 +33,9 @@ import os
 import doctest
 import pytest
 
+# Used to list unittests correctly
+from glob import glob
+
 # Telegram python binding
 # c.f. https://telepot.readthedocs.io/en/latest/
 import telepot
@@ -177,18 +180,28 @@ def autotest(*args, **kwargs):
         the equivalent of doing :command:`py.test --quiet --tb=line
         functional_test.py`
     """
+    PYTHON_FILES = sorted(glob('*.py'))
+    TEST_FILES = sorted(glob('test_*.py'))
+    NON_TEST_FILES = sorted(set(PYTHON_FILES) - set(TEST_FILES))
+    FUNCTIONNAL_TEST_FILES = sorted(glob('test_functional*.py'))
+    UNIT_TEST_FILES = sorted(set(TEST_FILES) - set(FUNCTIONNAL_TEST_FILES))
+
     # Doctests
     print("DOCTESTS".center(80, '#'))
     print("Tests examples from the documentation".center(80, '-'))
-    nb_fails, nb_tests = doctest.testmod(verbose=False)
-    nb_oks = nb_tests - nb_fails
-    print(nb_oks, "/", nb_tests, "tests are OK.")
-    if nb_fails > 0:
-        print("FAIL")
-        print("     To have more details about the errors you should try "
-              "the command: python -m doctest -v ludocore.py")
-    else:
-        print("SUCCESS")
+    for file_with_doctest in NON_TEST_FILES:
+        nb_fails, nb_tests = doctest.testfile(file_with_doctest, verbose=False)
+        if nb_tests == 0:
+            continue
+        nb_oks = nb_tests - nb_fails
+        print(file_with_doctest, " : ",
+              nb_oks, "/", nb_tests, "tests are OK.")
+        if nb_fails > 0:
+            print("FAIL")
+            print("     To have more details about the errors you should try "
+                  "the command: python -m doctest -v", file_with_doctest, "\n")
+        else:
+            print("SUCCESS\n")
 
     # Unit tests
     if os.path.exists("test_gandalf.py"):
@@ -197,12 +210,11 @@ def autotest(*args, **kwargs):
         unit_result = pytest.main([
             "--quiet",
             "--color=no",
-            "--tb=line",
-            "test_gandalf.py"])
+            "--tb=line"] + UNIT_TEST_FILES)
         if unit_result not in (PYTEST_EXIT_OK, PYTEST_EXIT_NOTESTSCOLLECTED):
             print("FAIL")
             print("     To have more details about the errors you should try "
-                  "the command: py.test test_gandalf.py")
+                  "the command: py.test", " ".join(UNIT_TEST_FILES))
         else:
             print("SUCCESS")
 
@@ -213,12 +225,11 @@ def autotest(*args, **kwargs):
         func_result = pytest.main([
             "--quiet",
             "--color=no",
-            "--tb=line",
-            "test_functional.py"])
+            "--tb=line"] + FUNCTIONNAL_TEST_FILES)
         if func_result not in (PYTEST_EXIT_OK, PYTEST_EXIT_NOTESTSCOLLECTED):
             print("FAIL")
             print("     To have more details about the errors you should try "
-                  "the command: py.test test_functional.py")
+                  "the command: py.test", " ".join(FUNCTIONNAL_TEST_FILES))
         else:
             print("SUCCESS")
 
