@@ -66,7 +66,7 @@ class Planning:
 
         Returns:
             List of Option object assciated to the planning extracted from the
-            database.
+            database sorted by num field.
         """
         return Option.load_all_from_planning_id_from_db(
             self._db_conn, self.pl_id)
@@ -218,12 +218,15 @@ class Planning:
         Load the only available under construction planning from the database.
 
         Arguments:
+            user_id -- unique id of the user to which the planning should
+                       belong.
             db_conn -- connexion to the database from which to load the
                        plannings.
 
         Returns:
             If a unique planning with the status "under construction" is
-            present, a correspinding Planning instance is returned.
+            present for the given user, a correspinding Planning instance is
+            returned.
             If no planning with the status "under construction" is present in
             the database, None is returned.
 
@@ -263,6 +266,55 @@ class Planning:
         else:
             return None
 
+    @staticmethod
+    def load_opened_from_db(pl_id, db_conn):
+        """
+        Load the only opened planning with specified id from the database.
+
+        Arguments:
+            pl_id -- unique id of the desired planning.
+            db_conn -- connexion to the database from which to load the
+                       plannings.
+
+        Returns:
+            The Planning istance if it exists in the database.
+            None if not.
+
+        Exceptions:
+            If many planning fitting the request are present in the database
+            (which should never happen!) AssertionError is raised.
+        """
+        # Preconditions
+        assert db_conn is not None
+
+        # Retreival from the database
+        c = db_conn.cursor()
+        c.execute('SELECT * FROM plannings WHERE status=? AND pl_id=?',
+                  (Planning.Status.OPENED, pl_id))
+        rows = c.fetchall()
+        c.close()
+
+        # If we have many instances... it's an error
+        assert len(rows) <= 1, "There should never be more than one "\
+            "planning with a given pl_id. "\
+            "{nb} have been found in the data base: {pl!r}.".format(
+                nb=len(rows),
+                pl=rows)
+
+        # Now that we are sure there's not many instances, let's return what
+        # we have found
+        if rows:
+            pl_id, user_id, title, status = rows[0]
+            p = Planning(pl_id, user_id, title, status, db_conn)
+
+            # Postconditions
+            assert p.pl_id is not None, "A Planning instance extracted from "\
+                "the database must have an id."
+
+            return p
+        else:
+            return None
+
 
 class Option:
     """
@@ -282,13 +334,14 @@ class Option:
     DESC_FULL = '{description} - 👥 {nb_participant}\n'\
                 '{participants}'
 
-    def __init__(self, pl_id, txt, db_conn):
+    def __init__(self, pl_id, txt, num, db_conn):
         """
         Create an Option instance providing all necessary information.
 
         Arguments:
             pl_id -- id of a planning to which the option belong.
             txt -- free form text of the option describing what it is.
+            num -- number of the option in its planning
             db_conn -- connexion to the database where the Planning will be
                        saved.
         """
@@ -297,14 +350,15 @@ class Option:
 
         self.pl_id = pl_id
         self.txt = txt
+        self.num = num
         self._db_conn = db_conn
 
     def save_to_db(self):
         """Save the Option object to the provided database."""
         # Insert the new Option to the database
         c = self._db_conn.cursor()
-        c.execute("INSERT INTO options(pl_id, txt) VALUES (?,?)",
-                  (self.pl_id, self.txt))
+        c.execute("INSERT INTO options(pl_id, txt, num) VALUES (?,?,?)",
+                  (self.pl_id, self.txt, self.num))
         self._db_conn.commit()
         c.close()
 
@@ -330,7 +384,7 @@ class Option:
 
         Returns:
             A list of Option object created from the data retreived from the
-            database.
+            database and sorted by num field.
             Empty list if no such object are found.
         """
         # Preconditions
@@ -338,9 +392,10 @@ class Option:
 
         # Retreival from the database
         c = db_conn.cursor()
-        c.execute('SELECT * FROM options WHERE pl_id=?', (pl_id,))
+        c.execute('SELECT * FROM options WHERE pl_id=? ORDER BY num', (pl_id,))
         rows = c.fetchall()
         c.close()
 
         # Let's build objects from those tuples
-        return [Option(my_id, my_txt, db_conn) for my_id, my_txt in rows]
+        return [Option(my_id, my_txt, num, db_conn)
+                for my_id, my_txt, num in rows]

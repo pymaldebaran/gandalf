@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Test file for the gandalf poject."""
 
@@ -22,23 +21,34 @@ from telepot.namedtuple import InlineKeyboardButton
 from telepot.namedtuple import Message, User, Chat
 import time
 
+
 def test_is_command():
     """Test all interesting cases for the is_command() function."""
     # Positive cases
     assert is_command("/foo", "/foo"), "Commands are matched when alone."
     assert is_command("/bar", "/bar"), "Commands other than /foo are matched."
-    assert is_command(" /foo", "/foo"), "Commands preceded by spaces are matched."
-    assert is_command("/foo blah", "/foo"), "Commands followed by one word are matched."
-    assert is_command("/foo blah blah", "/foo"), "Commands followed by any text are matched."
-    assert is_command("/foo /blah", "/foo"), "Commands followed by other commands are matched."
+    assert is_command(" /foo", "/foo"),\
+        "Commands preceded by spaces are matched."
+    assert is_command("/foo blah", "/foo"),\
+        "Commands followed by one word are matched."
+    assert is_command("/foo blah blah", "/foo"),\
+        "Commands followed by any text are matched."
+    assert is_command("/foo /blah", "/foo"),\
+        "Commands followed by other commands are matched."
 
     # Negative cases
-    assert not is_command("blah", "/foo"), "Random text does not match command."
-    assert not is_command("/bar", "/foo"), "Random command does not match another command."
-    assert not is_command("", "/foo"), "Empty text does not match command."
-    assert not is_command("a/foo", "/foo"), "Commands can not be preceded by a char."
-    assert not is_command("blah /foo", "/foo"), "Commands can not be preceded by text."
-    assert not is_command("/fooooooo", "/foo"), "Commands with extra char does not match."
+    assert not is_command("blah", "/foo"),\
+        "Random text does not match command."
+    assert not is_command("/bar", "/foo"),\
+        "Random command does not match another command."
+    assert not is_command("", "/foo"),\
+        "Empty text does not match command."
+    assert not is_command("a/foo", "/foo"),\
+        "Commands can not be preceded by a char."
+    assert not is_command("blah /foo", "/foo"),\
+        "Commands can not be preceded by text."
+    assert not is_command("/fooooooo", "/foo"),\
+        "Commands with extra char does not match."
 
 
 def test_createdb(tmpdir):
@@ -80,9 +90,10 @@ def test_createdb(tmpdir):
 
     cursor.execute("PRAGMA table_info('options')")
     plannings_columns = cursor.fetchall()
-    assert len(plannings_columns) == 2
+    assert len(plannings_columns) == 3
     assert ('pl_id', 'INTEGER') == plannings_columns[0][1:3]
     assert ('txt', 'TEXT') == plannings_columns[1][1:3]
+    assert ('num', 'INTEGER') == plannings_columns[2][1:3]
 
 
 class PlannerChatHandlerTester:
@@ -97,7 +108,6 @@ class PlannerChatHandlerTester:
         """Create a ready-to-use PlannerChatHandlerTester instance."""
         self.db = db
         self._users_planner = {}  # user_id -> PlannerChatHandler
-
 
     def _create_test_planner(self):
         """Create a new PlannerChatHandler object configured for testing."""
@@ -119,10 +129,9 @@ class PlannerChatHandlerTester:
 
         # We force the planner's bot to have the good name
         planner.bot.getMe = MagicMock(
-            return_value = {"username":"gandalf_planner_bot"})
+            return_value={"username": "gandalf_planner_bot"})
 
         return planner
-
 
     def get_planner(self, user):
         """Retreive the planner associated to the provided user."""
@@ -130,7 +139,6 @@ class PlannerChatHandlerTester:
         assert 'id' in user
 
         return self._users_planner[user['id']]
-
 
     def send_message(self, user, txt):
         """
@@ -322,8 +330,8 @@ def test_new_command_starts_creation_of_a_planning(init_planner_tester, users):
     planner = planner_tester.get_planner(user)
     assert planner.sender.sendMessage.call_count == 1
     planner.sender.sendMessage.assert_called_once_with(
-        'You want to create a planning named *Fancy diner*. Send me a description'
-        'or a question to ask to the participant. '
+        'You want to create a planning named *Fancy diner*. Send me a '
+        'description or a question to ask to the participant. '
         '/cancel to abort creation.',
         parse_mode='Markdown')
 
@@ -398,25 +406,26 @@ def test_done_command_show_a_planning_recap(init_planner_tester, users):
     assert planner.sender.sendMessage.call_count == 2
     planner.sender.sendMessage.assert_has_calls(
         [
-        call('*Fancy diner*\n\n'
-            '1 Monday evening - 👥 0\n'
-            '2 Tuesday evening - 👥 0\n'
-            '3 Thursday evening - 👥 0\n'
-            '4 Saturday evening - 👥 0\n\n'
-            '👥 0 people participated so far. _Planning Opened_.',
-            parse_mode='Markdown'),
-        call('👍 Planning created. You can now publish it to a group or send it '
-            'to your friends in a private message. To do this, tap the button '
-            'below or start your message in any other chat with '
-            '@gandalf_planner_bot and select one of your polls to send.',
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[
-                    InlineKeyboardButton(
-                        text='Publish planning',
-                        switch_inline_query='planning_1'
-                    )]]
-                )
-            )
+            call('*Fancy diner*\n\n'
+                 '1 Monday evening - 👥 0\n'
+                 '2 Tuesday evening - 👥 0\n'
+                 '3 Thursday evening - 👥 0\n'
+                 '4 Saturday evening - 👥 0\n\n'
+                 '👥 0 people participated so far. _Planning Opened_.',
+                 parse_mode='Markdown'),
+            call('👍 Planning created. You can now publish it to a group or '
+                 'send it to your friends in a private message. To do this, '
+                 'tap the button below or start your message in any other '
+                 'chat with @gandalf_planner_bot and select one of your polls '
+                 'to send.',
+                 reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[[
+                        InlineKeyboardButton(
+                            text='Publish planning',
+                            switch_inline_query='planning_1'
+                        )]]
+                    )
+                 )
         ])
 
 
@@ -551,4 +560,3 @@ def test_can_cancel_a_planning(init_planner_tester, users):
     cursor.execute("SELECT * FROM options ORDER BY txt")
     rows = cursor.fetchall()
     assert len(rows) == 0, "No option should have been created."
-

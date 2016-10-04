@@ -372,7 +372,11 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
 
         if planning is not None:
             # We have a planning in progress... let's add the option to it !
-            opt = Option(planning.pl_id, text, self._conn)
+            opt = Option(
+                pl_id=planning.pl_id,
+                txt=text,
+                num=len(planning.options),
+                db_conn=self._conn)
 
             # and save the option to database
             opt.save_to_db()
@@ -454,47 +458,41 @@ class PlannerInlineHandler(
             if not query_string.startswith(Planning.INLINE_QUERY_PREFIX):
                 # We return an empty answer
                 return []
-            else:
-                # TODO replace with a real answer
-                # Search for a corresponding planning
-                articles = [
-                    InlineQueryResultArticle(
-                        type='article',
-                        id='abc',
-                        title='ABC',
-                        description='The evident first choice, why bother?',
-                        input_message_content=InputTextMessageContent(
-                            message_text='First choice'),
-                        reply_markup=InlineKeyboardMarkup(
-                            inline_keyboard=[[
-                                InlineKeyboardButton(
-                                    text='linuxfr',
-                                    url='https://linuxfr.org'),
-                                InlineKeyboardButton(
-                                    text='NextInpact',
-                                    url='https://nextinpact.com'),
-                                ]])
-                       ),
-                    InlineQueryResultArticle(
-                        type='article',
-                        id='def',
-                        title='DEF',
-                        description='The second choice... is it the good one?',
-                        input_message_content=InputTextMessageContent(
-                            message_text='Second choice'),
-                        reply_markup=InlineKeyboardMarkup(
-                            inline_keyboard=[
-                                [InlineKeyboardButton(
-                                    text='vote gentil',
-                                    callback_data='vote un')],
-                                [InlineKeyboardButton(
-                                    text='vote méchant',
-                                    callback_data='vote deux')],
-                                ])
-                       )
-                    ]
 
-                return articles
+            # Retreive the id of the desired planning if possible
+            try:
+                pl_id = int(query_string[len(Planning.INLINE_QUERY_PREFIX):])
+            except ValueError:
+                return []
+
+            # Retreive the corresponding planning from database
+            planning = Planning.load_opened_from_db(
+                pl_id=pl_id,
+                db_conn=self._conn)
+            if planning is None:
+                return []
+
+            # Build the reply inline keyboard markup
+            inline_kbm = [[InlineKeyboardButton(
+                text=opt.short_description(),
+                callback_data=str(opt.num))] for opt in planning.options]
+
+            # Search for a corresponding planning
+            articles = [
+                InlineQueryResultArticle(
+                    type='article',
+                    id=str(planning.pl_id),
+                    title=planning.title,
+                    description='',  # TODO add a description here
+                    input_message_content=InputTextMessageContent(
+                        message_text=planning.full_description(),
+                        parse_mode='Markdown'),
+                    reply_markup=InlineKeyboardMarkup(
+                        inline_keyboard=inline_kbm)
+                   )
+                ]
+
+            return articles
 
         # Use the Answerer to handle the message and reply to them
         self.answerer.answer(msg, compute_answer)
