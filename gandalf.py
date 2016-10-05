@@ -29,20 +29,22 @@ import os.path
 # For file manipulation
 import os
 
-# Used to represent status of a planning
-from enum import Enum
-
-# For debugging Telegram message
-from pprint import pprint
-
 # Used to launch autotests of the program
 import doctest
 import pytest
 
+# Used to list unittests correctly
+from glob import glob
+
 # Telegram python binding
 # c.f. https://telepot.readthedocs.io/en/latest/
 import telepot
-from telepot.delegate import pave_event_space, per_chat_id, create_open
+from telepot.delegate import pave_event_space, per_chat_id, per_inline_from_id
+from telepot.delegate import create_open, intercept_callback_query_origin
+
+# Handlers for the Telegram protocol
+from handlers import PlannerChatHandler
+from handlers import PlannerInlineHandler
 
 __version__ = "0.1.0"
 __author__ = "Pierre-Yves Martin"
@@ -71,643 +73,12 @@ LOG_MSG = {
         'My name is {botname} and you can contact me via @{botusername} and '
         'talk to me.',
     'goodbye':
-        '\nParty is over ! Time to go to bed.',
-    'goodbye':
         'Goodbye... it was nice seeing you.',
     'db_file_created':
         'New database file <{dbfile}> created.',
     'db_file_deleted':
         'Database file <{dbfile}> already existed and was deleted.',
-    'db_new_planning':
-        'Planning "{title}" added to database file <{dbfile}>.',
-    'planning_already_in_progress':
-        'Impossible to create a new planning, there is already a planning '
-        'in progress.'
 }
-CHAT_MSG = {
-    'help_answer':
-        'This bot will help you create planings. Use /new to create a '
-        'planning here, then publish it to groups or send it to individual '
-        'friends.\n\n'
-        'You can control me by sending these commands:\n\n'
-        '/new - create a new planning\n'
-        '/plannings - manage your existing plannings.\n'
-        '/help - display this help',
-    'dont_understand':
-        'Sorry I did not understand... try /help to see how you should talk '
-        'to me.',
-    'new_answer':
-        'You want to create a planning named *{title}*. Send me a description'
-        'or a question to ask to the participant. '
-        '/cancel to abort creation.',
-    'new_error_answer':
-        'Sorry to create a planning you have give a title after the /new '
-        'command. Like this :\n\n'
-        '/new _My fancy planning title_',
-    'new_already_in_progress':
-        'Sorry but you already have a planning creation in progress.\n'
-        'You can cancel the current creation using the /cancel command or '
-        'finish it using the /done command.',
-    'description_answer':
-        'Creating new planning:\n'
-        '*{title}*\n'
-        '_{description}_\n\n'
-        'Please send me the first option for participant to join. '
-        '/cancel to abort creation.',
-    'option_answer':
-        'Good. Feel free to had more options. '
-        '/done to finish creating the planning or /cancel to abort creation.',
-    'done_answer':
-        '👍 Planning created. You can now publish it to a group or send it '
-        'to your friends in a private message. To do this, tap the button '
-        'below or start your message in any other chat with @{botusername} '
-        'and select one of your polls to send.',
-    'done_error_answer':
-        'Sorry but you have to create at least one option for this planning.',
-    'cancel_answer':
-        'Planning creation canceled.',
-    'no_current_planning_answer':
-        'Sorry but there is no planning currently in edition. To start '
-        'creating one use the /new command. Like this:\n\n'
-        '/new _My fancy planning title_',
-    'plannings_answer':
-        'You have currently {nb_plannings} plannings:\n\n'
-        '{planning_list}',
-    'planning_recap':
-        '*{title}*\n\n'
-        '{options}\n\n'
-        '👥 {nb_participants} people participated so far. '
-        '_Planning {planning_status}_.',
-    'planning_recap+':  # TODO use planning recap+ instead of planning recap
-        '*{title}*\n'
-        '_{description}_\n\n'
-        '{options}\n\n'
-        '👥 {nb_participants} people participated so far. '
-        '_Planning {planning_status}_.'
-}
-OPTION_FULL = '{description} - 👥 {nb_participant}\n'\
-              '{participants}'
-OPTION_SHORT = '{description} - 👥 {nb_participant}'
-
-
-class Planning:
-    """Represent a user created planning."""
-
-    class Status(str, Enum):
-        """Represent the different possible status for a planning."""
-
-        UNDER_CONSTRUCTION = "Under construction"
-        OPENED = "Opened"
-        CLOSED = "Closed"
-
-    def __init__(self, pl_id, user_id, title, status, db_conn):
-        """
-        Create a new Planning.
-
-        Arguments:
-            pl_id -- id of the object in plannings table of the database.
-            user_id -- id of the user that created the planning. It comes from
-                       plannings table of the database.
-            title -- title of the planning.
-            status -- Planning.Status enum describing the current status of the
-                      planning object.
-            db_conn -- connexion to the database where the Planning will be
-                       saved.
-        """
-        # Preconditions
-        assert db_conn is not None
-
-        self.pl_id = pl_id
-        self.user_id = user_id
-        self.title = title
-        self.status = status
-        self._db_conn = db_conn
-
-
-    @property
-    def options(self):
-        """
-        Return options associated to the planning.
-
-        Returns:
-            List of Option object assciated to the planning extracted from the
-            database.
-        """
-        return Option.load_all_from_planning_id_from_db(
-            self._db_conn, self.pl_id)
-
-
-    def short_description(self, num):
-        """
-        Return a short str description of the planning.
-
-        Useful for list view of many plannings."
-
-        Arguments:
-            num -- position of the planning in the list
-
-        Returns:
-            string describing the planning prefixed by it's provided position.
-        """
-        return '*{num}*. *{planning.title}* - _{planning.status}_'.format(
-            num=num+1,
-            planning=self)
-
-
-    def full_description(self):
-        """
-        Return a full str description of the planning including its options.
-
-        Returns:
-            string describing the planning with detailed options and
-            contributors.
-        """
-        options_msg = '\n'.join(
-            [opt.short_description() for opt in self.options])
-
-        desc_msg = CHAT_MSG['planning_recap'].format(
-            title=self.title,
-            options=options_msg,
-            nb_participants=0,  # TODO replace with a number reteived from db
-            planning_status=self.status)
-
-        return desc_msg
-
-
-    def save_to_db(self):
-        """Save the Planning object to the provided database."""
-        c = self._db_conn.cursor()
-        c.execute(
-            """INSERT INTO plannings(user_id, title, status)
-                VALUES (?,?,?)""",
-            (self.user_id, self.title, self.status))
-        self._db_conn.commit()
-        c.close()
-
-
-    def update_to_db(self):
-        """Update the Planning object status to the provided database."""
-        # Get a connexion to the database
-        c = self._db_conn.cursor()
-
-        # Update the planning's status in the database
-        c.execute("UPDATE plannings SET status=? WHERE pl_id=?",
-            (self.status, self.pl_id))
-
-        # Check the results of the planning update consistancy
-        assert c.rowcount != 0, "Tried to update planning with id {id} that "\
-            "doesn't exist in database.".format(id=self.pl_id)
-        assert c.rowcount == 1, "Updated more than one planning with id {id} "\
-            "from the database.".format(id=self.pl_id)
-
-        # Once the results are checked we can commit and close cursor
-        self._db_conn.commit()
-        c.close()
-
-
-    def remove_from_db(self):
-        """
-        Remove the Planning object and dependancies from the database.
-
-        Remove the Planning object and all the corresponding Option object
-        from the database.
-
-        Exceptions:
-            If none or many plannings would have been removed from the
-            database AssertionError is raised.
-        """
-        # Preconditions
-        assert self.pl_id is not None
-
-        # Get a connexion to the database
-        c = self._db_conn.cursor()
-
-        # First try to remove the option if any
-        c.execute('DELETE FROM options WHERE pl_id=?', (self.pl_id,))
-
-        # Remove the planning itself from the database
-        c.execute('DELETE FROM plannings WHERE pl_id=?',(self.pl_id,))
-
-        # Check the results of the planning delete
-        assert c.rowcount != 0, "Tried to remove planning with id {id} that "\
-            "doesn't exist in database.".format(id=self.pl_id)
-        assert c.rowcount < 2, "Removed more than one planning with id {id} "\
-            "from the database.".format(id=self.pl_id)
-
-        # Once the results are checked we can commit and close cursor
-        self._db_conn.commit()
-        c.close()
-
-
-    @staticmethod
-    def load_all_from_db(user_id, db_conn):
-        """
-        Load all the instances belonging to the user in the database.
-
-        Arguments:
-            user_id -- Telegram user id to look for in the database via the
-                       user_id column.
-            db_conn -- connexion to the database from which to load the
-                       plannings.
-
-        Returns:
-            A list of Planning instances corresponding to the one present in
-            the database with user_id corresponding to the one provided. If no
-            instance are available [] is returned.
-
-        """
-        # Preconditions
-        assert db_conn is not None
-        assert user_id is not None
-
-        # Retreive all the planning data from the db as tuple
-        c = db_conn.cursor()
-        c.execute('SELECT * FROM plannings WHERE user_id=?', (user_id,))
-        rows = c.fetchall()
-        c.close()
-
-        # Create the Planning instances
-        plannings = [Planning(pl_id, user_id, title, status, db_conn)\
-            for pl_id, user_id, title, status in rows]
-
-        return plannings
-
-
-    @staticmethod
-    def load_under_construction_from_db(user_id, db_conn):
-        """
-        Load the only available under construction planning from the database.
-
-        Arguments:
-            db_conn -- connexion to the database from which to load the
-                       plannings.
-
-        Returns:
-            If a unique planning with the status "under construction" is
-            present, a correspinding Planning instance is returned.
-            If no planning with the status "under construction" is present in
-            the database, None is returned.
-
-        Exceptions:
-            If many planning with the status "under construction" are present
-            in the database AssertionError is raised.
-        """
-        # Preconditions
-        assert user_id is not None
-        assert db_conn is not None
-
-        # Retreival from the database
-        c = db_conn.cursor()
-        c.execute('SELECT * FROM plannings WHERE status=? AND user_id=?',
-            (Planning.Status.UNDER_CONSTRUCTION, user_id))
-        rows = c.fetchall()
-        c.close()
-
-        # If we have many instances... it's an error
-        assert len(rows) <= 1, "There should never be more than one "\
-            "planning in edition at any given time. "\
-            "{nb} have been found in the data base: {pl!r}.".format(
-                nb=len(rows),
-                pl=rows)
-
-        # Now that we are sure there's not many instances, let's return what
-        # we have found
-        if rows:
-            pl_id, user_id, title, status = rows[0]
-            p = Planning(pl_id, user_id, title, status, db_conn)
-
-            # Postconditions
-            assert p.pl_id is not None, "A Planning instance extracted from "\
-                "the database must have an id."
-
-            return p
-        else:
-            return None
-
-
-class Option:
-    """
-    Represent a possible option for a planning.
-
-    This could be a date, an hour, a place... in fact whatevere you what the
-    attendees to select/choose in order to orgonise your planning.
-
-    It always refer to one specific and existing planning throught its id but
-    this constraint is only check when inserting the option to the database
-    because of a FOREIGN KEY constraint.
-    """
-
-    def __init__(self, pl_id, txt, db_conn):
-        """
-        Create an Option instance providing all necessary information.
-
-        Arguments:
-            pl_id -- id of a planning to which the option belong.
-            txt -- free form text of the option describing what it is.
-            db_conn -- connexion to the database where the Planning will be
-                       saved.
-        """
-        # Preconditions
-        assert db_conn is not None
-
-        self.pl_id = pl_id
-        self.txt = txt
-        self._db_conn = db_conn
-
-
-    def save_to_db(self):
-        """Save the Option object to the provided database."""
-        # Insert the new Option to the database
-        c = self._db_conn.cursor()
-        c.execute("INSERT INTO options(pl_id, txt) VALUES (?,?)",
-            (self.pl_id, self.txt))
-        self._db_conn.commit()
-        c.close()
-
-
-    def short_description(self):
-        """Return a short description of the option.
-
-        Returns:
-            String describing the option with text and number of contributors.
-        """
-        return OPTION_SHORT.format(
-                    description=self.txt,
-                    nb_participant=0)
-
-
-    @staticmethod
-    def load_all_from_planning_id_from_db(db_conn, pl_id):
-        """
-        Get all the Option instance with provided planning id from database.
-
-        Arguments:
-            db_conn -- connexion to the database where the Planning will be
-                       saved.
-            pl_id -- planning id to find
-
-        Returns:
-            A list of Option object created from the data retreived from the
-            database.
-            Empty list if no such object are found.
-        """
-        # Preconditions
-        assert db_conn is not None
-
-        # Retreival from the database
-        c = db_conn.cursor()
-        c.execute('SELECT * FROM options WHERE pl_id=?', (pl_id,))
-        rows = c.fetchall()
-        c.close()
-
-        # Let's build objects from those tuples
-        return [Option(my_id, my_txt, db_conn) for my_id, my_txt in rows]
-
-
-def is_command(text, cmd):
-    """Analyse a string to determine if it is a peticular command message.
-
-    This function does not check for valid number of parameters in the
-    message.
-
-    Arguments:
-        text -- a string to analyse.
-        cmd -- the command to check for. It must include the leading '/' char.
-
-    Returns:
-        True if text starts with the cmd provided command.
-        False in all other cases
-    """
-    # cmd preconditions
-    assert cmd.strip() == cmd  # No spaces around
-    assert cmd.startswith('/')  # Leading slash included
-    assert len(cmd) > 1  # At least one char for command name
-
-    return len(text.strip()) > 0 and text.split()[0] == cmd
-
-
-class Planner(telepot.helper.ChatHandler):
-    """Process messages to create persistent plannings."""
-
-    def __init__(self, seed_tuple, db_file, **kwargs):
-        """
-        Create a new Planner.
-
-        This is implicitly called when creating a new thread.
-
-        Arguments:
-            seed_tuple -- seed of the delegator.
-            db_file -- database file to use.
-        """
-        super(Planner, self).__init__(seed_tuple, **kwargs)
-
-        self._db_file = db_file  # Database file name (for log & debug)
-        self._conn = sqlite3.connect(db_file)  # Connexion to the database
-
-        # Post condition
-        assert self._conn is not None
-
-
-    def on_close(self, ex):
-        """
-        Called after timeout.
-
-        Timeout is mandatory to prevent infinity of threads to be created.
-        """
-        # Close the connexion to the database
-        self._conn.close()
-
-        # Some feedback for the logs
-        print(LOG_MSG['goodbye'])
-
-
-    def on_chat_message(self, msg):
-        """React the the reception of a Telegram message."""
-        # Raw printing of the message received
-        pprint(msg)
-
-        # Retreive basic information
-        content_type, _, chat_id = telepot.glance(msg)
-
-        # We only want text messages
-        if content_type != 'text':
-            self.sender.sendMessage(CHAT_MSG['dont_understand'])
-            return
-
-        # Now we can extract the text...
-        text = msg['text']
-        from_user = msg['from']
-
-        # Switching according to witch command is received
-        if is_command(text, '/help'):
-            self.on_command_help(from_user)
-        elif is_command(text, '/new'):
-            self.on_command_new(from_user, text)
-        elif is_command(text, '/plannings'):
-            self.on_command_plannings(from_user)
-        elif is_command(text, '/cancel'):
-            self.on_command_cancel(from_user)
-        elif is_command(text, '/done'):
-            self.on_command_done(from_user)
-        # Not a command or not a recognized one
-        else:
-            self.on_not_a_command(from_user, text)
-
-
-    def on_command_help(self, from_user):
-        """Handle the /help command by sending an help message."""
-        self.sender.sendMessage(CHAT_MSG['help_answer'])
-
-
-    def on_command_new(self, from_user, text):
-        """
-        Handle the /new command by creating a new planning.
-
-        Arguments:
-        text -- string containing the text of the message recieved (including
-                the /new command)
-        """
-        # First check if there is not a planning under construction
-        if Planning.load_under_construction_from_db(from_user['id'], self._conn) is not None:
-            # Tell the user
-            self.sender.sendMessage(CHAT_MSG['new_already_in_progress'])
-            # Log some info for easy debugging
-            print(LOG_MSG['planning_already_in_progress'])
-            return
-
-        # Retrieve the title of the planning
-        command, _, title = text.lstrip().partition(' ')
-
-        # The user must provide a title
-        if title == '':
-            self.sender.sendMessage(
-                CHAT_MSG['new_error_answer'],
-                parse_mode='Markdown')
-            return
-
-        # Create a new planning
-        planning = Planning(
-            pl_id=None,
-            user_id=from_user['id'],
-            title=title,
-            status=Planning.Status.UNDER_CONSTRUCTION,
-            db_conn=self._conn)
-
-        # Save the new planning to the database
-        planning.save_to_db()
-
-        # Some feedback in the logs
-        print(LOG_MSG['db_new_planning'].format(
-            dbfile=self._db_file,
-            title=planning.title))
-
-        # Send the answer
-        reply = CHAT_MSG['new_answer'].format(title=title)
-        self.sender.sendMessage(reply, parse_mode='Markdown')
-
-
-    def on_command_plannings(self, from_user):
-        """Handle the /plannings command by retreiving all plannings."""
-        # Retrieve plannings from database for current user
-        plannings = Planning.load_all_from_db(from_user['id'], self._conn)
-
-        # Prepare a list of the short desc of each planning
-        planning_list = '\n\n'.join(
-            [p.short_description(num) for num, p in enumerate(plannings)])
-
-        # Format the reply and send it
-        reply = CHAT_MSG['plannings_answer'].format(
-            nb_plannings=len(plannings),
-            planning_list=planning_list)
-        self.sender.sendMessage(reply, parse_mode='Markdown')
-
-
-    def on_command_cancel(self, from_user):
-        """
-        Handle the /cancel command to cancel the current planning.
-
-        This only works if there is a planning under construction i.e. after a
-        /new command and before a /done command.
-        """
-        # Retreive the current planning if any
-        planning = Planning.load_under_construction_from_db(
-            from_user['id'],
-            self._conn)
-
-        # No planning... nothing to do
-        if planning is None:
-            self.sender.sendMessage(CHAT_MSG['no_current_planning_answer'])
-        else:
-            # TODO ask a confirmation here using button
-            # Remove the planning from the database
-            planning.remove_from_db()
-            self.sender.sendMessage(CHAT_MSG['cancel_answer'])
-
-
-    def on_command_done(self, from_user):
-        """
-        Handle the /done command to finish the current planning.
-
-        This only works if there is a planning under construction i.e. after a
-        /new command and after the creation of at least one option for this
-        planning.
-        """
-        # Retreive the current planning if any
-        planning = Planning.load_under_construction_from_db(
-            from_user['id'],
-            self._conn)
-
-        # No planning... nothing to do and return
-        if planning is None:
-            self.sender.sendMessage(CHAT_MSG['no_current_planning_answer'])
-            return
-
-        # No option... ask for one and return
-        if len(planning.options) == 0 :
-            self.sender.sendMessage(CHAT_MSG['done_error_answer'])
-            return
-
-        # Change planning state and update it in the database
-        planning.status = Planning.Status.OPENED
-        planning.update_to_db()
-
-        # First we must send a recap of the opened planning...
-        self.sender.sendMessage(
-            planning.full_description(),
-            parse_mode='Markdown')
-
-        # ...then we send a confirmation message
-        self.sender.sendMessage(CHAT_MSG['done_answer'].format(
-            botusername=self.bot.getMe()['username']))
-
-
-    def on_not_a_command(self, from_user, text):
-        """
-        Handle any text message that is not a command or not a recognised one.
-
-        If called after a /new command it adds a new option to the current
-        planning.
-        Any other case trigger a "I don't understand" message.
-
-        Arguments:
-        text -- string containing the text of the message recieved.
-        """
-        # Retreive the current planning if any
-        planning = Planning.load_under_construction_from_db(
-            from_user['id'],
-            self._conn)
-
-        if planning is not None:
-            # We have a planning in progress... let's add the option to it !
-            opt = Option(planning.pl_id, text, self._conn)
-
-            # and save the option to database
-            opt.save_to_db()
-
-            self.sender.sendMessage(CHAT_MSG['option_answer'])
-        else:
-            # We have no planning in progress, we just can't understand the msg
-            self.sender.sendMessage(CHAT_MSG['dont_understand'])
 
 
 def serve(token, db, **kwargs):
@@ -720,15 +91,23 @@ def serve(token, db, **kwargs):
                   command.
     """
     # Initialise the bot
-    delegation_pattern = pave_event_space()(
-        per_chat_id(),
-        create_open,
-        Planner,
-        db,  # Param for Planner constructor
-        timeout=TIMEOUT)
-    bot = telepot.DelegatorBot(token, [delegation_pattern])
+    delegation_pattern = [
+        pave_event_space()(
+            per_chat_id(),
+            create_open,
+            PlannerChatHandler,
+            db,  # Param for PlannerChatHandler constructor
+            timeout=TIMEOUT),
+        intercept_callback_query_origin(pave_event_space())(
+            per_inline_from_id(),
+            create_open,
+            PlannerInlineHandler,
+            db,  # Param for PlannerInlineHandler constructor
+            timeout=TIMEOUT)
+        ]
+    bot = telepot.DelegatorBot(token, delegation_pattern)
 
-    # Get the bot info
+    # Get the bot info and greet the user
     me = bot.getMe()
     print(LOG_MSG['greetings'].format(
         botname=me["first_name"],
@@ -768,9 +147,22 @@ def createdb(db, **kwargs):
         status TEXT NOT NULL
         )""")
     c.execute("""CREATE TABLE options (
+        opt_id INTEGER PRIMARY KEY,
         pl_id INTEGER NOT NULL,
         txt TEXT NOT NULL,
+        num INTEGER NOT NULL,
         FOREIGN KEY(pl_id) REFERENCES plannings(pl_id)
+        )""")
+    c.execute("""CREATE TABLE voters (
+        v_id INTEGER NOT NULL UNIQUE,
+        first_name TEXT NOT NULL,
+        last_name TEXT
+        )""")
+    c.execute("""CREATE TABLE votes (
+        opt_id INTEGER NOT NULL,
+        v_id INTEGER NOT NULL,
+        FOREIGN KEY(opt_id) REFERENCES options(opt_id),
+        FOREIGN KEY(v_id) REFERENCES voters(v_id)
         )""")
 
     # Save (commit) the changes
@@ -800,18 +192,28 @@ def autotest(*args, **kwargs):
         the equivalent of doing :command:`py.test --quiet --tb=line
         functional_test.py`
     """
+    PYTHON_FILES = sorted(glob('*.py'))
+    TEST_FILES = sorted(glob('test_*.py'))
+    NON_TEST_FILES = sorted(set(PYTHON_FILES) - set(TEST_FILES))
+    FUNCTIONNAL_TEST_FILES = sorted(glob('test_functional*.py'))
+    UNIT_TEST_FILES = sorted(set(TEST_FILES) - set(FUNCTIONNAL_TEST_FILES))
+
     # Doctests
     print("DOCTESTS".center(80, '#'))
     print("Tests examples from the documentation".center(80, '-'))
-    nb_fails, nb_tests = doctest.testmod(verbose=False)
-    nb_oks = nb_tests - nb_fails
-    print(nb_oks, "/", nb_tests, "tests are OK.")
-    if nb_fails > 0:
-        print("FAIL")
-        print("     To have more details about the errors you should try "
-              "the command: python -m doctest -v ludocore.py")
-    else:
-        print("SUCCESS")
+    for file_with_doctest in NON_TEST_FILES:
+        nb_fails, nb_tests = doctest.testfile(file_with_doctest, verbose=False)
+        if nb_tests == 0:
+            continue
+        nb_oks = nb_tests - nb_fails
+        print(file_with_doctest, " : ",
+              nb_oks, "/", nb_tests, "tests are OK.")
+        if nb_fails > 0:
+            print("FAIL")
+            print("     To have more details about the errors you should try "
+                  "the command: python -m doctest -v", file_with_doctest, "\n")
+        else:
+            print("SUCCESS\n")
 
     # Unit tests
     if os.path.exists("test_gandalf.py"):
@@ -820,12 +222,11 @@ def autotest(*args, **kwargs):
         unit_result = pytest.main([
             "--quiet",
             "--color=no",
-            "--tb=line",
-            "test_gandalf.py"])
+            "--tb=line"] + UNIT_TEST_FILES)
         if unit_result not in (PYTEST_EXIT_OK, PYTEST_EXIT_NOTESTSCOLLECTED):
             print("FAIL")
             print("     To have more details about the errors you should try "
-                  "the command: py.test test_gandalf.py")
+                  "the command: py.test", " ".join(UNIT_TEST_FILES))
         else:
             print("SUCCESS")
 
@@ -836,12 +237,11 @@ def autotest(*args, **kwargs):
         func_result = pytest.main([
             "--quiet",
             "--color=no",
-            "--tb=line",
-            "test_functional.py"])
+            "--tb=line"] + FUNCTIONNAL_TEST_FILES)
         if func_result not in (PYTEST_EXIT_OK, PYTEST_EXIT_NOTESTSCOLLECTED):
             print("FAIL")
             print("     To have more details about the errors you should try "
-                  "the command: py.test test_functional.py")
+                  "the command: py.test", " ".join(FUNCTIONNAL_TEST_FILES))
         else:
             print("SUCCESS")
 
