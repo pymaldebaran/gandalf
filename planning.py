@@ -9,6 +9,9 @@ the bot.
 # Used to represent status of a planning
 from enum import Enum
 
+# Used to represent users obtained from Telegram messages
+import telepot
+
 
 class Planning:
     """Represent a user created planning."""
@@ -117,15 +120,61 @@ class Planning:
             prefix=Planning.INLINE_QUERY_PREFIX,
             pl_id=self.pl_id)
 
+    def is_in_db(self):
+        """
+        Check if the Option instance is already in database.
+
+        Returns:
+            False if the planning has a self.pl_id is None or if there is no
+            row in plannings table in the database with pl_id == self.pl_id.
+            True else.
+        """
+        # No id means not yet saved
+        if self.pl_id is None:
+            return False
+
+        # Search in database
+        c = self._db_conn.cursor()
+        c.execute(
+            """SELECT * FROM plannings WHERE pl_id=?""",
+            (self.pl_id))
+        rows = c.fetchall()
+        c.close()
+
+        # Is it present ?
+        if len(rows) > 0:
+            return True
+        else:
+            return False
+
     def save_to_db(self):
-        """Save the Planning object to the provided database."""
+        """
+        Save the Planning object to the provided database.
+
+        If the planning had no pl_id before, it is set (since only the database
+        can give a valid id to the planning).
+
+        Exceptions:
+            If the planning is already in the database AssertionError is
+            raised.
+        """
+        # Preconditions
+        assert not self.is_in_db(), "planning can be saved in database only "\
+            "once."
+
+        # Save to database
         c = self._db_conn.cursor()
         c.execute(
             """INSERT INTO plannings(user_id, title, status)
                 VALUES (?,?,?)""",
             (self.user_id, self.title, self.status))
+        # Retreive the new id
+        new_pl_id = c.lastrowid
         self._db_conn.commit()
         c.close()
+
+        # Set the id in the instance
+        self.pl_id = new_pl_id
 
     def update_to_db(self):
         """Update the Planning object status to the provided database."""
@@ -179,10 +228,41 @@ class Planning:
         self._db_conn.commit()
         c.close()
 
+    # TODO add an remove_vote_to_db and check if a vote already exists
+    # TODO add a toggle_vote_to_db that use add/remove_vote_to_db
+    @staticmethod
+    def add_vote_to_db(pl_id, opt_num, voter, db_conn):
+        """
+        Register a user vote for an option of the planning to the database.
+
+        Arguments:
+            pl_id -- planning id in the database.
+            opt_num -- voted option number in the database for this planning.
+            voter -- telebot namedtuple User corresponding to the voter.
+            db_conn -- connexion to the database to which update the plannings.
+        """
+        # Preconditions
+        assert type(pl_id) is int
+        assert type(opt_num) is int
+        assert type(voter) is telepot.namedtuple.User
+        assert db_conn is not None
+
+        # Retreive the option from database
+        opt = Option.load_from_db(
+            db_conn=db_conn,
+            pl_id=pl_id,
+            opt_num=opt_num)
+        assert opt is not None, "It's not possible to vote for an inexistant "\
+            "option. In planning <{pl_id}> trying to vote for option number "\
+            "{opt_num}.".format(pl_id=pl_id, opt_num=opt_num)
+
+        # Register the voter in the vote table
+        opt.add_vote_to_db(voter)
+
     @staticmethod
     def load_all_from_db(user_id, db_conn):
         """
-        Load all the instances belonging to the user in the database.
+        Load all the planning belonging to the user in the database.
 
         Arguments:
             user_id -- Telegram user id to look for in the database via the
@@ -334,11 +414,12 @@ class Option:
     DESC_FULL = '{description} - 👥 {nb_participant}\n'\
                 '{participants}'
 
-    def __init__(self, pl_id, txt, num, db_conn):
+    def __init__(self, opt_id, pl_id, txt, num, db_conn):
         """
         Create an Option instance providing all necessary information.
 
         Arguments:
+            opt_id -- unique id of the option in the database
             pl_id -- id of a planning to which the option belong.
             txt -- free form text of the option describing what it is.
             num -- number of the option in its planning
@@ -348,19 +429,65 @@ class Option:
         # Preconditions
         assert db_conn is not None
 
+        self.opt_id = opt_id
         self.pl_id = pl_id
         self.txt = txt
         self.num = num
         self._db_conn = db_conn
 
+    def is_in_db(self):
+        """
+        Check if the Option instance is already in database.
+
+        Returns:
+            False if the option has a self.opt_id is None or if there is no
+            row in options table in the database with opt_id == self.opt_id.
+            True else.
+        """
+        # No id means not yet saved
+        if self.opt_id is None:
+            return False
+
+        # Search in database
+        c = self._db_conn.cursor()
+        c.execute(
+            """SELECT * FROM options WHERE opt_id=?""",
+            (self.opt_id))
+        rows = c.fetchall()
+        c.close()
+
+        # Is it present ?
+        if len(rows) > 0:
+            return True
+        else:
+            return False
+
     def save_to_db(self):
-        """Save the Option object to the provided database."""
+        """
+        Save the Option object to the database.
+
+        If the option had no opt_id before, it is set (since only the database
+        can give a valid id to the option).
+
+        Exceptions:
+            If the option is already in the database AssertionError is
+            raised.
+        """
+        # Preconditions
+        assert not self.is_in_db(), "Option can be saved in database only "\
+            "once."
+
         # Insert the new Option to the database
         c = self._db_conn.cursor()
         c.execute("INSERT INTO options(pl_id, txt, num) VALUES (?,?,?)",
                   (self.pl_id, self.txt, self.num))
+        # Retreive the id of the option in the database
+        new_opt_id = c.lastrowid
         self._db_conn.commit()
         c.close()
+
+        # Set the id in the instance
+        self.opt_id = new_opt_id
 
     def short_description(self):
         """Return a short description of the option.
@@ -371,6 +498,75 @@ class Option:
         return Option.DESC_SHORT.format(
                     description=self.txt,
                     nb_participant=0)
+
+    def add_vote_to_db(self, user):
+        """
+        Register the vote to this option from a user to the database.
+
+        Arguments:
+            user -- telebot namedtuple User corresponding to the voter.
+        """
+        # Preconditions
+        assert type(user) is telepot.namedtuple.User
+        assert self._db_conn is not None
+
+        # Insert the user to the database if not present else update its info
+        voter = Voter.create_or_update_to_db(
+            v_id=user.id,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            db_conn=self._db_conn)
+
+        # TODO check if we already have a vote for this option from this user
+
+        # Register the voter in the vote table
+        c = self._db_conn.cursor()
+        c.execute(
+            """INSERT INTO votes(opt_id, v_id) VALUES (?,?)""",
+            (self.opt_id, voter.v_id))
+        self._db_conn.commit()
+        c.close()
+
+    @staticmethod
+    def load_from_db(db_conn, pl_id, opt_num):
+        """
+        Get the Option instance with provided planning id and number from db.
+
+        Arguments:
+            db_conn -- connexion to the database where the Planning will be
+                       saved.
+            pl_id -- planning id to find.
+            opt_num -- option number in the planning.
+
+        Returns:
+            An Option object created from the data retreived from the
+            database corresponding to the provided parameters.
+            None if no such object exists in database.
+        """
+        # Preconditions
+        assert db_conn is not None
+        assert type(pl_id) is int
+        assert type(opt_num) is int
+
+        # Retreival from the database
+        c = db_conn.cursor()
+        c.execute('SELECT * FROM options WHERE pl_id=? AND num=?',
+                  (pl_id, opt_num))
+        rows = c.fetchall()
+        c.close()
+
+        assert len(rows) <= 1, "Only one option should exist in the base for "\
+            "a given planning id <{pl_id}> and a given option number "\
+            "<{opt_num}>.".format(pl_id=pl_id, opt_num=opt_num)
+
+        # No corresponding option found in database
+        if not rows:
+            return None
+
+        # Let's build our object from retreived data
+        opt_id, pl_id_db, opt_txt, opt_num = rows[0]
+        assert pl_id_db == pl_id
+        return Option(opt_id, pl_id, opt_txt, opt_num, db_conn)
 
     @staticmethod
     def load_all_from_planning_id_from_db(db_conn, pl_id):
@@ -397,5 +593,131 @@ class Option:
         c.close()
 
         # Let's build objects from those tuples
-        return [Option(my_id, my_txt, num, db_conn)
-                for my_id, my_txt, num in rows]
+        return [Option(opt_id, pl_id, opt_txt, opt_num, db_conn)
+                for opt_id, _, opt_txt, opt_num in rows]
+
+
+class Voter:
+    """
+    Represent a user that has participated to a vote.
+
+    Its unique id is provided by Telegram (the user id in the Telegram API)
+    and not by the automatic PRIMARY KEY feature of the database.
+    """
+    def __init__(self, v_id, first_name, last_name, db_conn):
+        """
+        Create a Voter instance providing all necessary information.
+
+        It is roughly based on the description of a user in Telegram:
+        https://core.telegram.org/bots/api#user
+
+        Arguments:
+            v_id -- unique id of the option in the database it is in fact the
+                    user id provided by Telegram. It can not be None.
+            first_name -- first name of the user it is in fact the first_name
+                          provided by Telegram for this user. It can not be
+                          None.
+            last_name -- last name of the user it is in fact the last_name
+                         provided by Telegram for this user. It can be None.
+            db_conn -- connexion to the database where the Planning will be
+                       saved.
+        """
+        # Preconditions
+        assert type(v_id) is int, "You must provide an integer id for the "\
+            "voter."
+        assert type(first_name) is str, "You must provide a string first "\
+            "name for the voter."
+        assert db_conn is not None
+
+        self.v_id = v_id
+        self.first_name = first_name
+        self.last_name = last_name
+        self._db_conn = db_conn
+
+    def is_in_db(self):
+        """
+        Check if the Voter instance is already in database.
+
+        Returns:
+            False if there is no row in options table in the database with
+            v_id == self.v_id.
+            True else.
+        """
+        # Search in database
+        c = self._db_conn.cursor()
+        c.execute(
+            """SELECT * FROM voters WHERE v_id=?""",
+            (self.v_id,))
+        rows = c.fetchall()
+        c.close()
+
+        # Is it present ?
+        if len(rows) > 0:
+            return True
+        else:
+            return False
+
+    # TODO check if this actualy works with last_name = None
+    def save_to_db(self):
+        """Save the Voter object to the database."""
+        # Preconditions
+        assert not self.is_in_db(), "Voter can be saved in database only "\
+            "once."
+
+        # Insert the new Option to the database
+        c = self._db_conn.cursor()
+        c.execute("INSERT INTO voters(v_id, first_name, last_name) "
+                  "VALUES (?,?,?)",
+                  (self.v_id, self.first_name, self.last_name))
+        self._db_conn.commit()
+        c.close()
+
+    def update_to_db(self):
+        """
+        Update the Voter object's columns in the database.
+
+        The v_id is never altered but all other property are updated from
+        instance values to database.
+        """
+        # Preconditions
+        assert self.is_in_db(), "Voter can be saved in database only "\
+            "once."
+
+        # Insert the new Option to the database
+        c = self._db_conn.cursor()
+        c.execute("UPDATE voters SET first_name=?, last_name=? "
+                  "WHERE v_id=?",
+                  (self.first_name, self.last_name, self.v_id))
+        self._db_conn.commit()
+        c.close()
+
+    @staticmethod
+    def create_or_update_to_db(v_id, first_name, last_name, db_conn):
+        """
+        Create a voter in database or update it's data if it already exist.
+
+        Returns:
+            Voter object built from the database.
+        """
+        # Preconditions
+        assert db_conn is not None
+
+        # Let's create a Voter instance
+        voter = Voter(v_id, first_name, last_name, db_conn)
+
+        # Retreive the voter if it already exist in the database
+        c = db_conn.cursor()
+        c.execute('SELECT * FROM voters WHERE v_id=?', (v_id,))
+        rows = c.fetchall()
+        c.close()
+
+        if rows:
+            # Voter exist let's update it's info (since user can change them)
+            assert len(rows) == 1, "Voter id should be unique (they are "\
+                "Telegram user id."
+            voter.update_to_db()
+        else:
+            # Voter doesn't exist yet let's add it to database
+            voter.save_to_db()
+
+        return voter

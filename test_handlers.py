@@ -52,6 +52,7 @@ def test_is_command():
     assert not is_command("/fooooooo", "/foo"),\
         "Commands with extra char does not match."
 
+
 class PlannerChatHandlerTester:
     """
     Helper class that makes the tests of PlannerChatHandler scenario easier.

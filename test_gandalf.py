@@ -4,6 +4,9 @@
 # Used to inspect databse content
 import sqlite3
 
+# Used to easily analyse columns descriptions
+from collections import deque
+
 # Gandalf module to test
 from gandalf import createdb
 
@@ -26,9 +29,11 @@ def test_createdb(tmpdir):
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
     tables = cursor.fetchall()
     tables = [e for (e,) in tables]  # just unpacking tuples
-    assert len(tables) == 2
+    assert len(tables) == 4
     assert "plannings" in tables
     assert "options" in tables
+    assert "voters" in tables
+    assert "votes" in tables
 
     # Table columns
     # We use PRAGMA table_info('table_name') to get the column descriptions
@@ -38,16 +43,30 @@ def test_createdb(tmpdir):
     # 0           id          integer     99                      1
     # 1           name                    0                       0
     cursor.execute("PRAGMA table_info('plannings')")
-    plannings_columns = cursor.fetchall()
+    plannings_columns = deque(cursor.fetchall())
     assert len(plannings_columns) == 4
-    assert ('pl_id', 'INTEGER') == plannings_columns[0][1:3]
-    assert ('user_id', 'INTEGER') == plannings_columns[1][1:3]
-    assert ('title', 'TEXT') == plannings_columns[2][1:3]
-    assert ('status', 'TEXT') == plannings_columns[3][1:3]
+    assert ('pl_id', 'INTEGER') == plannings_columns.popleft()[1:3]
+    assert ('user_id', 'INTEGER') == plannings_columns.popleft()[1:3]
+    assert ('title', 'TEXT') == plannings_columns.popleft()[1:3]
+    assert ('status', 'TEXT') == plannings_columns.popleft()[1:3]
 
     cursor.execute("PRAGMA table_info('options')")
-    plannings_columns = cursor.fetchall()
-    assert len(plannings_columns) == 3
-    assert ('pl_id', 'INTEGER') == plannings_columns[0][1:3]
-    assert ('txt', 'TEXT') == plannings_columns[1][1:3]
-    assert ('num', 'INTEGER') == plannings_columns[2][1:3]
+    options_columns = deque(cursor.fetchall())
+    assert len(options_columns) == 4
+    assert ('opt_id', 'INTEGER') == options_columns.popleft()[1:3]
+    assert ('pl_id', 'INTEGER') == options_columns.popleft()[1:3]
+    assert ('txt', 'TEXT') == options_columns.popleft()[1:3]
+    assert ('num', 'INTEGER') == options_columns.popleft()[1:3]
+
+    cursor.execute("PRAGMA table_info('voters')")
+    voters_columns = deque(cursor.fetchall())
+    assert len(voters_columns) == 3
+    assert ('v_id', 'INTEGER') == voters_columns.popleft()[1:3]
+    assert ('first_name', 'TEXT') == voters_columns.popleft()[1:3]
+    assert ('last_name', 'TEXT') == voters_columns.popleft()[1:3]
+
+    cursor.execute("PRAGMA table_info('votes')")
+    votes_columns = deque(cursor.fetchall())
+    assert len(votes_columns) == 2
+    assert ('opt_id', 'INTEGER') == votes_columns.popleft()[1:3]
+    assert ('v_id', 'INTEGER') == votes_columns.popleft()[1:3]

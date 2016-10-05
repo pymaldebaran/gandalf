@@ -147,10 +147,22 @@ def createdb(db, **kwargs):
         status TEXT NOT NULL
         )""")
     c.execute("""CREATE TABLE options (
+        opt_id INTEGER PRIMARY KEY,
         pl_id INTEGER NOT NULL,
         txt TEXT NOT NULL,
         num INTEGER NOT NULL,
         FOREIGN KEY(pl_id) REFERENCES plannings(pl_id)
+        )""")
+    c.execute("""CREATE TABLE voters (
+        v_id INTEGER NOT NULL UNIQUE,
+        first_name TEXT NOT NULL,
+        last_name TEXT
+        )""")
+    c.execute("""CREATE TABLE votes (
+        opt_id INTEGER NOT NULL,
+        v_id INTEGER NOT NULL,
+        FOREIGN KEY(opt_id) REFERENCES options(opt_id),
+        FOREIGN KEY(v_id) REFERENCES voters(v_id)
         )""")
 
     # Save (commit) the changes

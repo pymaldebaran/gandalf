@@ -15,6 +15,7 @@ from telepot.namedtuple import InlineKeyboardMarkup
 from telepot.namedtuple import InlineKeyboardButton
 from telepot.namedtuple import InlineQueryResultArticle
 from telepot.namedtuple import InputTextMessageContent
+from telepot.namedtuple import CallbackQuery
 
 # Planning entities
 from planning import Planning, Option
@@ -86,9 +87,11 @@ _CHAT_MSG = {
         '{planning_list}'
 }
 
-_BTN_MSG = {
-    'publish':
-        'Publish planning'
+_UI_MSG = {
+    'publish_btn':
+        'Publish planning',
+    'click_notification':
+        '👍 Your availability has been registered'
 }
 
 
@@ -346,7 +349,7 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[[
                     InlineKeyboardButton(
-                        text=_BTN_MSG['publish'],
+                        text=_UI_MSG['publish_btn'],
                         switch_inline_query=planning.inline_query_id()
                     )]]
                 )
@@ -373,6 +376,7 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
         if planning is not None:
             # We have a planning in progress... let's add the option to it !
             opt = Option(
+                opt_id=None,
                 pl_id=planning.pl_id,
                 txt=text,
                 num=len(planning.options),
@@ -473,9 +477,14 @@ class PlannerInlineHandler(
                 return []
 
             # Build the reply inline keyboard markup
-            inline_kbm = [[InlineKeyboardButton(
-                text=opt.short_description(),
-                callback_data=str(opt.num))] for opt in planning.options]
+            inline_kbm = [[
+                InlineKeyboardButton(
+                    text=opt.short_description(),
+                    callback_data='{pl_id} {opt_num}'.format(
+                        pl_id=planning.pl_id,
+                        opt_num=opt.num)
+                    )]
+                for opt in planning.options]
 
             # Search for a corresponding planning
             articles = [
@@ -507,7 +516,7 @@ class PlannerInlineHandler(
         pprint(msg)
         # We do nothing in particular... but the fnction need to be present
 
-    def on_callback_query(self, msg):
+    def on_callback_query(self, query):
         """
         React to the click on a callback button.
 
@@ -515,11 +524,31 @@ class PlannerInlineHandler(
         """
         # Get the basic infos from the message
         query_id, from_id, query_data = telepot.glance(
-            msg, flavor='callback_query')
+            query, flavor='callback_query')
 
         # Some logging
         print(_LOG_MSG['callback_received'].format(data=query_data))
-        pprint(msg)
+        pprint(query)
+
+        # Extract info from the query data
+        pl_id, opt_num = query_data.split()
+        pl_id = int(pl_id)
+        opt_num = int(opt_num)
+
+        # Convert the message to a convenient namedtuple
+        query = CallbackQuery(**query)
+
+        # Register the vote
+        # TODO use toggle_vote_to_db instead
+        Planning.add_vote_to_db(
+            pl_id=pl_id,
+            opt_num=opt_num,
+            voter=query.from_,
+            db_conn=self._conn)
+
+        # Edit the planning post
+        # TODO put some actual code here
 
         # Show confirmation
-        self.bot.answerCallbackQuery(query_id, text='Ok')
+        self.bot.answerCallbackQuery(
+            query_id, text=_UI_MSG['click_notification'])
