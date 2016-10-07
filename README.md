@@ -2,7 +2,7 @@
 
 Gandalf is a [Telegram bot](https://telegram.org/blog/bot-revolution) that helps you organise your plannings. It's quite similar to [@vote bot](https://telegram.me/vote) in terms of functionnality except Gandalf provides a live list of "who voted for what". You can see it as an "open vote system" or "hand vote" since vote are not secret but the initial objective of Gandalf is to provide a simple way to organise events/planings.
 
-You know those moments when you want to know who is available at what moments. It can be used in différent sotuations:
+You know those moments when you want to know who is available at what moments. It can be used in different situations:
 
 > When do you prefer to have this party folks?
 > * Monday at 6pm afterwork-style?
