@@ -27,19 +27,68 @@ You can also use Gandalf to know who will be available when (or where Gandalf is
 
 ## Getting Started ##
 
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes. See deployment for notes on how to deploy the project on a live system.
-
 ### Prerequisities ###
 
-TODO
+* This python bot is developped for [python 3](https://www.python.org/download/releases/3.0/). You have to install it for your platform (having python 2.x and python 3 is possible).
+* To launch the bot you need to get a [Telegram Bot API TOKEN](https://core.telegram.org/bots#3-how-do-i-create-a-bot).
+
+### Running the program ###
+
+First you need to create a database for your server:
+
+```shell
+$ ./gandalf.py createdb
+Database file <plannings.db> already existed and was deleted.
+New database file <plannings.db> created.
+```
+
+Then you just need to launch the program in server mode but you need to provide it a valid [Telegram Bot API token](https://core.telegram.org/bots#3-how-do-i-create-a-bot) (here I use a dummy one):
+
+```shell
+$ ./gandalf.py serve 123456789:uLJLzM7FG7Fc3dW1qY6FUVmbzw378xUWH74
+My name is Name_of_your_bot and you can contact me via @username_of_you_bot and talk to me.
+Listening ...
+```
+
+From that moment on you can communicate via any Telegram client with your bot !
+
+For an always up-to-date documentation on usage, Gandalf is a command line tool with extensive usage documentation:
+
+```shell
+$ ./gandalf.py --help
+usage: gandalf.py [-h] {serve,createdb,autotest} ...
+
+positional arguments:
+  {serve,createdb,autotest}
+    serve               listen for chats
+    createdb            create new database file
+    autotest            launch all unittests for Gandalf.
+
+optional arguments:
+  -h, --help            show this help message and exit
+```
 
 ### Installing ###
 
-TODO
+To install dependancies simply use `pip3` and the provided `requirements.txt`:
+
+```shell
+pip3 install -r requirements.txt
+```
 
 ## Running the tests ##
 
-TODO
+Running the test is integrated directly in the `gandalf.py` file using the `autotest` command:
+
+```shell
+$ ./gandalf.py autotest
+```
+
+It will run all tests:
+
+* Doctests included in the code
+* unittests specific to each class, function or more generic functionnality
+* functional tests that simulate some real life usage of the bot
 
 ## For developers ##
 
