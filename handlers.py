@@ -501,6 +501,8 @@ class PlannerInlineHandler(
                    )
                 ]
 
+            # Insanely usefull for debugging
+            # pprint(articles)
             return articles
 
         # Use the Answerer to handle the message and reply to them
@@ -516,7 +518,7 @@ class PlannerInlineHandler(
         pprint(msg)
         # We do nothing in particular... but the fnction need to be present
 
-    def on_callback_query(self, query):
+    def on_callback_query(self, msg):
         """
         React to the click on a callback button.
 
@@ -524,11 +526,11 @@ class PlannerInlineHandler(
         """
         # Get the basic infos from the message
         query_id, from_id, query_data = telepot.glance(
-            query, flavor='callback_query')
+            msg, flavor='callback_query')
 
         # Some logging
         print(_LOG_MSG['callback_received'].format(data=query_data))
-        pprint(query)
+        pprint(msg)
 
         # Extract info from the query data
         pl_id, opt_num = query_data.split()
@@ -536,7 +538,7 @@ class PlannerInlineHandler(
         opt_num = int(opt_num)
 
         # Convert the message to a convenient namedtuple
-        query = CallbackQuery(**query)
+        query = CallbackQuery(**msg)
 
         # Register the vote
         # TODO use toggle_vote_to_db instead

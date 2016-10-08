@@ -68,10 +68,22 @@ class Planning:
         Return options associated to the planning.
 
         Returns:
-            List of Option object assciated to the planning extracted from the
+            List of Option object associated to the planning extracted from the
             database sorted by num field.
         """
         return Option.load_all_from_planning_id_from_db(
+            self._db_conn, self.pl_id)
+
+    @property
+    def voters(self):
+        """
+        Return voters that voted for at least one of the planning's option.
+
+        Returns:
+            List of Voters object associated to the planning extracted from the
+            database sorted by first name.
+        """
+        return Voter.load_all_from_planning_id_from_db(
             self._db_conn, self.pl_id)
 
     def short_description(self, num):
@@ -104,7 +116,7 @@ class Planning:
         desc_msg = Planning.DESC_FULL.format(
             title=self.title,
             options=options_msg,
-            nb_participants=0,  # TODO replace with a number reteived from db
+            nb_participants=len(self.voters),
             planning_status=self.status)
 
         return desc_msg
@@ -435,6 +447,18 @@ class Option:
         self.num = num
         self._db_conn = db_conn
 
+    @property
+    def voters(self):
+        """
+        Return voters that voted for this option.
+
+        Returns:
+            List of Voters object extracted from the database sorted by first
+            name.
+        """
+        return Voter.load_all_from_option_id_from_db(
+            self._db_conn, self.opt_id)
+
     def is_in_db(self):
         """
         Check if the Option instance is already in database.
@@ -497,7 +521,7 @@ class Option:
         """
         return Option.DESC_SHORT.format(
                     description=self.txt,
-                    nb_participant=0)
+                    nb_participant=len(self.voters))
 
     def add_vote_to_db(self, user):
         """
@@ -604,6 +628,7 @@ class Voter:
     Its unique id is provided by Telegram (the user id in the Telegram API)
     and not by the automatic PRIMARY KEY feature of the database.
     """
+
     def __init__(self, v_id, first_name, last_name, db_conn):
         """
         Create a Voter instance providing all necessary information.
@@ -721,3 +746,63 @@ class Voter:
             voter.save_to_db()
 
         return voter
+
+    @staticmethod
+    def load_all_from_planning_id_from_db(db_conn, pl_id):
+        """
+        Get all the Voter instances regitered in planing's option from db.
+
+        Arguments:
+            db_conn -- connexion to the database where the Planning will be
+                       saved.
+            pl_id -- planning id to find
+
+        Returns:
+            A list of Voter objects created from the data retreived from the
+            database and sorted by first name field.
+            Empty list if no such object are found.
+        """
+        # Retreival from the database
+        c = db_conn.cursor()
+        c.execute("""SELECT DISTINCT v_id, first_name, last_name
+                     FROM voters
+                     NATURAL JOIN votes
+                     NATURAL JOIN options
+                     WHERE pl_id=?
+                     ORDER BY first_name""", (pl_id,))
+        rows = c.fetchall()
+        c.close()
+
+        # Let's build objects from those tuples
+        return [Voter(v_id, first_name, last_name, db_conn)
+                for v_id, first_name, last_name in rows]
+
+    @staticmethod
+    def load_all_from_option_id_from_db(db_conn, opt_id):
+        """
+        Get all the Voter instances regitered in povided option from db.
+
+        Arguments:
+            db_conn -- connexion to the database where the Planning will be
+                       saved.
+            opt_id -- option id to find
+
+        Returns:
+            A list of Voter objects created from the data retreived from the
+            database and sorted by first name field.
+            Empty list if no such object are found.
+        """
+        # Retreival from the database
+        c = db_conn.cursor()
+        c.execute("""SELECT DISTINCT v_id, first_name, last_name
+                     FROM voters
+                     NATURAL JOIN votes
+                     NATURAL JOIN options
+                     WHERE opt_id=?
+                     ORDER BY first_name""", (opt_id,))
+        rows = c.fetchall()
+        c.close()
+
+        # Let's build objects from those tuples
+        return [Voter(v_id, first_name, last_name, db_conn)
+                for v_id, first_name, last_name in rows]
