@@ -202,7 +202,9 @@ def autotest(*args, **kwargs):
     print("DOCTESTS".center(80, '#'))
     print("Tests examples from the documentation".center(80, '-'))
     for file_with_doctest in NON_TEST_FILES:
-        nb_fails, nb_tests = doctest.testfile(file_with_doctest, verbose=False)
+        nb_fails, nb_tests = doctest.testmod(
+            __import__(file_with_doctest[:-3]),
+            verbose=False)
         if nb_tests == 0:
             continue
         nb_oks = nb_tests - nb_fails
@@ -211,7 +213,7 @@ def autotest(*args, **kwargs):
         if nb_fails > 0:
             print("FAIL")
             print("     To have more details about the errors you should try "
-                  "the command: python -m doctest -v", file_with_doctest, "\n")
+                  "the command: python3 -m doctest -v", file_with_doctest, "\n")
         else:
             print("SUCCESS\n")
 
