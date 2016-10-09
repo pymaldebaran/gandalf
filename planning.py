@@ -162,8 +162,8 @@ class Planning:
         Return options associated to the planning.
 
         Returns:
-            List of Option object associated to the planning extracted from the
-            database sorted by num field.
+            Tuple of Option object associated to the planning extracted from
+            the database sorted by num field.
         """
         return Option.load_all_from_planning_id_from_db(
             self._db_conn, self.pl_id)
@@ -174,8 +174,8 @@ class Planning:
         Return voters that voted for at least one of the planning's option.
 
         Returns:
-            List of Voters object associated to the planning extracted from the
-            database sorted by first name.
+            Tuple of Voters object associated to the planning extracted from
+            the database sorted by first name.
         """
         return Voter.load_all_from_planning_id_from_db(
             self._db_conn, self.pl_id)
@@ -969,9 +969,9 @@ class Voter:
             pl_id -- planning id to find
 
         Returns:
-            A list of Voter objects created from the data retreived from the
+            A tuple of Voter objects created from the data retreived from the
             database and sorted by first name field.
-            Empty list if no such object are found.
+            Empty tuple if no such object are found.
         """
         # Retreival from the database
         c = db_conn.cursor()
@@ -985,8 +985,8 @@ class Voter:
         c.close()
 
         # Let's build objects from those tuples
-        return [Voter(v_id, first_name, last_name, db_conn)
-                for v_id, first_name, last_name in rows]
+        return tuple([Voter(v_id, first_name, last_name, db_conn)
+                      for v_id, first_name, last_name in rows])
 
     @staticmethod
     def load_all_from_option_id_from_db(db_conn, opt_id):

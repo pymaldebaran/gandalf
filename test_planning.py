@@ -13,6 +13,9 @@ from contextlib import closing
 # Used to easily analyse columns descriptions
 from collections import deque
 
+# Used to create fake users for tests
+from telepot.namedtuple import User
+
 # Planning module elements to test
 from planning import Planning, Option, Voter
 
@@ -140,13 +143,13 @@ def test_can_not_modify_planning_options():
         assert "object does not support item assignment" in str(excinfo.value)
 
 
-@pytest.mark.skip(reason="We need Planning.add_option() to work first.")
 def test_can_not_modify_planning_voters():
     """Ensure that it's not possible to modify the planning's voters."""
     with closing(sqlite3.connect(":memory:")) as conn:
         # First populate the database
         Planning.create_tables_in_db(conn)
         Option.create_tables_in_db(conn)
+        Voter.create_tables_in_db(conn)
 
         # Create a planning with some options
         pl = Planning(
@@ -161,11 +164,11 @@ def test_can_not_modify_planning_voters():
         pl.add_option("Sunday 8AM")
 
         # Let's vote !
-        pl.option[0].add_vote_to_db(User(id=123456, first_name="Monica"))
-        pl.option[0].add_vote_to_db(User(id=456789, first_name="Rachel"))
-        pl.option[2].add_vote_to_db(User(id=987654, first_name="Phoebe"))
+        pl.options[0].add_vote_to_db(User(id=123456, first_name="Monica"))
+        pl.options[0].add_vote_to_db(User(id=456789, first_name="Rachel"))
+        pl.options[2].add_vote_to_db(User(id=987654, first_name="Phoebe"))
 
         with pytest.raises(TypeError) as excinfo:
             # trying to set the first option
-            pl.voter[2] = Voter(111111, "Ursula", "Bouffay", conn)
+            pl.voters[2] = Voter(111111, "Ursula", "Bouffay", conn)
         assert "object does not support item assignment" in str(excinfo.value)
