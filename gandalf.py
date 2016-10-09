@@ -10,10 +10,10 @@ animal" who gets Ross and Chandler in different crazy situations on nights out.
 Usage:
 
 First create a database:
-# gandalf.py create
+# ./gandalf.py createdb
 
 Then launch the server using a Telegram Bot API Token:
-# gadalf.py serve 999999999999999999999999
+# ./gadalf.py serve 999999999999999999999999
 
 """
 
