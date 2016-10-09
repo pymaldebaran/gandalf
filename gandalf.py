@@ -13,7 +13,7 @@ First create a database:
 # ./gandalf.py createdb
 
 Then launch the server using a Telegram Bot API Token:
-# ./gadalf.py serve 999999999999999999999999
+# ./gandalf.py serve 999999999999999999999999
 
 """
 
