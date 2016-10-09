@@ -19,11 +19,8 @@ Examples:
     ...     db_conn=conn)
     >>> pl.save_to_db()
     >>> pl.add_option("Monday 8PM")
-    >>> pl.options[-1].save_to_db()
     >>> pl.add_option("Thursday 9PM")
-    >>> pl.options[-1].save_to_db()
     >>> pl.add_option("Saturday 11PM")
-    >>> pl.options[-1].save_to_db()
     >>> print(pl.full_description())
     *Fancy diner*
     <BLANKLINE>
@@ -31,7 +28,7 @@ Examples:
     Thursday 9PM - 👥 0
     Saturday 11PM - 👥 0
     <BLANKLINE>
-    👥 0 people participated so far. _Planning Under Construction_.
+    👥 0 people participated so far. _Planning Under construction_.
     >>> pl.open()
     >>> pl.update_to_db()
     >>> print(pl.full_description())
@@ -43,8 +40,8 @@ Examples:
     <BLANKLINE>
     👥 0 people participated so far. _Planning Opened_.
     >>> from telepot.namedtuple import User
-    >>> opt1.add_vote_to_db(User(id=123456789, first_name='Chandler'))
-    >>> opt2.add_vote_to_db(User(id=987654321, first_name='Joey'))
+    >>> pl.options[0].add_vote_to_db(User(id=123456789, first_name='Chandler'))
+    >>> pl.options[1].add_vote_to_db(User(id=987654321, first_name='Joey'))
     >>> pl.close()
     >>> pl.update_to_db()
     >>> print(pl.full_description())
@@ -55,6 +52,7 @@ Examples:
     Saturday 11PM - 👥 0
     <BLANKLINE>
     👥 2 people participated so far. _Planning Closed_.
+    >>> conn.close()
 """
 
 # Used to represent status of a planning
@@ -67,7 +65,6 @@ from contextlib import closing
 import telepot
 
 
-# TODO add a add_option() method
 # TODO include all the db manipulations inside the real semantic methods
 class Planning:
     """
@@ -196,6 +193,24 @@ class Planning:
         assert self.status == Planning.Status.OPENED
 
         self.status = Planning.Status.CLOSED
+
+    def add_option(self, txt):
+        """
+        Add a new option to the planning and save it to database.
+
+        Arguments:
+            txt -- String text of the option.
+        """
+        # Create the new Option object
+        opt = Option(
+            opt_id=None,
+            pl_id=self.pl_id,
+            txt=txt,
+            num=len(self.options),
+            db_conn=self._db_conn)
+
+        # Save the option to database
+        opt.save_to_db()
 
     def short_description(self, num):
         """
@@ -623,6 +638,9 @@ class Option:
             row in options table in the database with opt_id == self.opt_id.
             True else.
         """
+        # Preconditions
+        assert type(self.opt_id) is int or self.opt_id is None
+
         # No id means not yet saved
         if self.opt_id is None:
             return False
@@ -631,7 +649,7 @@ class Option:
         c = self._db_conn.cursor()
         c.execute(
             """SELECT * FROM options WHERE opt_id=?""",
-            (self.opt_id))
+            (self.opt_id,))
         rows = c.fetchall()
         c.close()
 

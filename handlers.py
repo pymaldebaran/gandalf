@@ -375,15 +375,7 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
 
         if planning is not None:
             # We have a planning in progress... let's add the option to it !
-            opt = Option(
-                opt_id=None,
-                pl_id=planning.pl_id,
-                txt=text,
-                num=len(planning.options),
-                db_conn=self._conn)
-
-            # and save the option to database
-            opt.save_to_db()
+            planning.add_option(text)
 
             self.sender.sendMessage(_CHAT_MSG['option_answer'])
         else:
