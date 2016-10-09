@@ -115,7 +115,6 @@ def test_voter_create_tables_in_db():
             assert ('v_id', 'INTEGER') == votes_columns.popleft()[1:3]
 
 
-@pytest.mark.skip(reason="We need Planning.add_option() to work first.")
 def test_can_not_modify_planning_options():
     """Ensure that it's not possible to modify the planning's options."""
     with closing(sqlite3.connect(":memory:")) as conn:
@@ -138,7 +137,7 @@ def test_can_not_modify_planning_options():
         with pytest.raises(TypeError) as excinfo:
             # trying to set the first option
             pl.options[0] = Option(None, pl.pl_id, "never", 0, conn)
-        assert "object does not support item assignment" in excinfo.value
+        assert "object does not support item assignment" in str(excinfo.value)
 
 
 @pytest.mark.skip(reason="We need Planning.add_option() to work first.")
@@ -169,4 +168,4 @@ def test_can_not_modify_planning_voters():
         with pytest.raises(TypeError) as excinfo:
             # trying to set the first option
             pl.voter[2] = Voter(111111, "Ursula", "Bouffay", conn)
-        assert "object does not support item assignment" in excinfo.value
+        assert "object does not support item assignment" in str(excinfo.value)

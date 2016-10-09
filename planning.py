@@ -777,9 +777,9 @@ class Option:
             pl_id -- planning id to find
 
         Returns:
-            A list of Option object created from the data retreived from the
+            A tuple of Option object created from the data retreived from the
             database and sorted by num field.
-            Empty list if no such object are found.
+            Empty tuple if no such object are found.
         """
         # Preconditions
         assert db_conn is not None
@@ -791,8 +791,8 @@ class Option:
         c.close()
 
         # Let's build objects from those tuples
-        return [Option(opt_id, pl_id, opt_txt, opt_num, db_conn)
-                for opt_id, _, opt_txt, opt_num in rows]
+        return tuple([Option(opt_id, pl_id, opt_txt, opt_num, db_conn)
+                      for opt_id, _, opt_txt, opt_num in rows])
 
 
 # TODO check that votes only occurs on opened plannings
