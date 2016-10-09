@@ -334,7 +334,7 @@ class PlannerChatHandler(telepot.helper.ChatHandler):
             return
 
         # Change planning state and update it in the database
-        planning.status = Planning.Status.OPENED
+        planning.open()
         planning.update_to_db()
 
         # First we must send a recap of the opened planning...

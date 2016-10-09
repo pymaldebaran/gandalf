@@ -39,7 +39,8 @@ Examples:
     ...     num=2,
     ...     db_conn=conn)
     >>> opt3.save_to_db()
-    >>> pl.status = Planning.Status.OPENED
+    >>> pl.open()
+    >>> pl.update_to_db()
     >>> print(pl.full_description())
     *Fancy diner*
     <BLANKLINE>
@@ -51,7 +52,8 @@ Examples:
     >>> from telepot.namedtuple import User
     >>> opt1.add_vote_to_db(User(id=123456789, first_name='Chandler'))
     >>> opt2.add_vote_to_db(User(id=987654321, first_name='Joey'))
-    >>> pl.status = Planning.Status.CLOSED
+    >>> pl.close()
+    >>> pl.update_to_db()
     >>> print(pl.full_description())
     *Fancy diner*
     <BLANKLINE>
@@ -72,7 +74,6 @@ from contextlib import closing
 import telepot
 
 
-# TODO add open() and close() methods
 # TODO add a add_option() method
 class Planning:
     """
@@ -187,6 +188,20 @@ class Planning:
         """
         return Voter.load_all_from_planning_id_from_db(
             self._db_conn, self.pl_id)
+
+    def open(self):
+        """Switch the status of the object from underconstruction to opened."""
+        # Preconditions
+        assert self.status == Planning.Status.UNDER_CONSTRUCTION
+
+        self.status = Planning.Status.OPENED
+
+    def close(self):
+        """Switch the status of the object from opened to closed."""
+        # Preconditions
+        assert self.status == Planning.Status.OPENED
+
+        self.status = Planning.Status.CLOSED
 
     def short_description(self, num):
         """
