@@ -18,27 +18,20 @@ Examples:
     ...     status=Planning.Status.UNDER_CONSTRUCTION,
     ...     db_conn=conn)
     >>> pl.save_to_db()
-    >>> opt1 = Option(
-    ...     opt_id=None,
-    ...     pl_id=pl.pl_id,
-    ...     txt="Monday 8PM",
-    ...     num=0,
-    ...     db_conn=conn)
-    >>> opt1.save_to_db()
-    >>> opt2 = Option(
-    ...     opt_id=None,
-    ...     pl_id=pl.pl_id,
-    ...     txt="Thursday 9PM",
-    ...     num=1,
-    ...     db_conn=conn)
-    >>> opt2.save_to_db()
-    >>> opt3 = Option(
-    ...     opt_id=None,
-    ...     pl_id=pl.pl_id,
-    ...     txt="Saturday 11PM",
-    ...     num=2,
-    ...     db_conn=conn)
-    >>> opt3.save_to_db()
+    >>> pl.add_option("Monday 8PM")
+    >>> pl.options[-1].save_to_db()
+    >>> pl.add_option("Thursday 9PM")
+    >>> pl.options[-1].save_to_db()
+    >>> pl.add_option("Saturday 11PM")
+    >>> pl.options[-1].save_to_db()
+    >>> print(pl.full_description())
+    *Fancy diner*
+    <BLANKLINE>
+    Monday 8PM - 👥 0
+    Thursday 9PM - 👥 0
+    Saturday 11PM - 👥 0
+    <BLANKLINE>
+    👥 0 people participated so far. _Planning Under Construction_.
     >>> pl.open()
     >>> pl.update_to_db()
     >>> print(pl.full_description())
@@ -75,6 +68,7 @@ import telepot
 
 
 # TODO add a add_option() method
+# TODO include all the db manipulations inside the real semantic methods
 class Planning:
     """
     Represent a user created planning.
