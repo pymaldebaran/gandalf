@@ -4,17 +4,86 @@ Gandalf bot planning entities.
 
 All classes needed to encapsultale the underlying database tables needed by
 the bot.
+
+Examples:
+    >>> import sqlite3
+    >>> conn = sqlite3.connect(":memory:")
+    >>> Planning.create_tables_in_db(conn)
+    >>> Option.create_tables_in_db(conn)
+    >>> Voter.create_tables_in_db(conn)
+    >>> pl = Planning(
+    ...     pl_id=None,
+    ...     user_id=123,
+    ...     title="Fancy diner",
+    ...     status=Planning.Status.UNDER_CONSTRUCTION,
+    ...     db_conn=conn)
+    >>> pl.save_to_db()
+    >>> opt1 = Option(
+    ...     opt_id=None,
+    ...     pl_id=pl.pl_id,
+    ...     txt="Monday 8PM",
+    ...     num=0,
+    ...     db_conn=conn)
+    >>> opt1.save_to_db()
+    >>> opt2 = Option(
+    ...     opt_id=None,
+    ...     pl_id=pl.pl_id,
+    ...     txt="Thursday 9PM",
+    ...     num=1,
+    ...     db_conn=conn)
+    >>> opt2.save_to_db()
+    >>> opt3 = Option(
+    ...     opt_id=None,
+    ...     pl_id=pl.pl_id,
+    ...     txt="Saturday 11PM",
+    ...     num=2,
+    ...     db_conn=conn)
+    >>> opt3.save_to_db()
+    >>> pl.status = Planning.Status.OPENED
+    >>> print(pl.full_description())
+    *Fancy diner*
+    <BLANKLINE>
+    Monday 8PM - 👥 0
+    Thursday 9PM - 👥 0
+    Saturday 11PM - 👥 0
+    <BLANKLINE>
+    👥 0 people participated so far. _Planning Opened_.
+    >>> from telepot.namedtuple import User
+    >>> opt1.add_vote_to_db(User(id=123456789, first_name='Chandler'))
+    >>> opt2.add_vote_to_db(User(id=987654321, first_name='Joey'))
+    >>> pl.status = Planning.Status.CLOSED
+    >>> print(pl.full_description())
+    *Fancy diner*
+    <BLANKLINE>
+    Monday 8PM - 👥 1
+    Thursday 9PM - 👥 1
+    Saturday 11PM - 👥 0
+    <BLANKLINE>
+    👥 2 people participated so far. _Planning Closed_.
 """
 
 # Used to represent status of a planning
 from enum import Enum
 
+# USed to autoclose database cursors
+from contextlib import closing
+
 # Used to represent users obtained from Telegram messages
 import telepot
 
 
+# TODO add open() and close() methods
+# TODO add a add_option() method
 class Planning:
-    """Represent a user created planning."""
+    """
+    Represent a user created planning.
+
+    Examples:
+        >>> import sqlite3
+        >>> pl = Planning(111, 123, "Fancy diner",
+        ...     Planning.Status.UNDER_CONSTRUCTION,
+        ...     sqlite3.connect(":memory:"))
+    """
 
     # Formating string for Planning str representation
     DESC_SHORT = '*{num}*. *{planning.title}* - _{planning.status}_'
@@ -39,21 +108,54 @@ class Planning:
         OPENED = "Opened"
         CLOSED = "Closed"
 
+    def create_tables_in_db(db_conn):
+        """
+        Create in the database the tables needed to store Planning instances.
+
+        Arguments:
+            db_conn -- connexion to the database where the Planning will be
+                       saved.
+        """
+        # Preconditions
+        assert db_conn is not None
+
+        # Get a cursor to the db
+        with closing(db_conn.cursor()) as c:
+            # Create the tables
+            c.execute("""CREATE TABLE plannings (
+                pl_id INTEGER PRIMARY KEY,
+                user_id INTEGER,
+                title TEXT NOT NULL,
+                status TEXT NOT NULL
+                )""")
+
+        # Save (commit) the changes
+        db_conn.commit()
+
     def __init__(self, pl_id, user_id, title, status, db_conn):
         """
         Create a new Planning.
 
         Arguments:
-            pl_id -- id of the object in plannings table of the database.
-            user_id -- id of the user that created the planning. It comes from
-                       plannings table of the database.
-            title -- title of the planning.
+            pl_id -- integer unique id of the object in plannings table of the
+                     database.
+                     Or None if we have not yet retreived an id from the
+                     database.
+            user_id -- integer id of the user that created the planning. It
+                       comes from plannings table of the database.
+                       Can not be None.
+            title -- string title of the planning.
+                     Can not be None or empty string.
             status -- Planning.Status enum describing the current status of the
                       planning object.
             db_conn -- connexion to the database where the Planning will be
                        saved.
         """
         # Preconditions
+        assert type(pl_id) is int or pl_id is None
+        assert type(user_id) is int
+        assert title is not None
+        assert title != ''
         assert db_conn is not None
 
         self.pl_id = pl_id
@@ -207,6 +309,7 @@ class Planning:
         self._db_conn.commit()
         c.close()
 
+    # TODO remove votes from database too
     def remove_from_db(self):
         """
         Remove the Planning object and dependancies from the database.
@@ -240,8 +343,10 @@ class Planning:
         self._db_conn.commit()
         c.close()
 
+    # TODO make this an instance method
     # TODO add an remove_vote_to_db and check if a vote already exists
     # TODO add a toggle_vote_to_db that use add/remove_vote_to_db
+    # TODO replace the Telepot user by fields (decoupling)
     @staticmethod
     def add_vote_to_db(pl_id, opt_num, voter, db_conn):
         """
@@ -418,6 +523,11 @@ class Option:
     It always refer to one specific and existing planning throught its id but
     this constraint is only check when inserting the option to the database
     because of a FOREIGN KEY constraint.
+
+    Examples:
+        >>> import sqlite3
+        >>> opt = Option(222, 111, "Monday morning", 1,
+        ...     sqlite3.connect(":memory:"))
     """
 
     # Formating strings for Option str representation
@@ -426,19 +536,55 @@ class Option:
     DESC_FULL = '{description} - 👥 {nb_participant}\n'\
                 '{participants}'
 
+    def create_tables_in_db(db_conn):
+        """
+        Create in the database the tables needed to store Option instances.
+
+        Arguments:
+            db_conn -- connexion to the database where the Planning will be
+                       saved.
+        """
+        # Preconditions
+        assert db_conn is not None
+
+        # Get a cursor to the db
+        with closing(db_conn.cursor()) as c:
+            # Create the tables
+            c.execute("""CREATE TABLE options (
+                opt_id INTEGER PRIMARY KEY,
+                pl_id INTEGER NOT NULL,
+                txt TEXT NOT NULL,
+                num INTEGER NOT NULL,
+                FOREIGN KEY(pl_id) REFERENCES plannings(pl_id)
+                )""")
+
+        # Save (commit) the changes
+        db_conn.commit()
+
     def __init__(self, opt_id, pl_id, txt, num, db_conn):
         """
         Create an Option instance providing all necessary information.
 
         Arguments:
-            opt_id -- unique id of the option in the database
-            pl_id -- id of a planning to which the option belong.
-            txt -- free form text of the option describing what it is.
-            num -- number of the option in its planning
+            opt_id -- Integer unique id of the option in the database.
+                      Or None if we have not yet retreived an id from the
+                      database.
+            pl_id -- Integer id of a planning to which the option belong.
+                     Can not be None.
+            txt -- Free form text string describing what the option is.
+                   Can not be None or empty string.
+            num -- Positive integer representing the index of the option in
+                   its planning (starts at 0).
             db_conn -- connexion to the database where the Planning will be
                        saved.
         """
         # Preconditions
+        assert type(opt_id) is int or opt_id is None
+        assert pl_id is not None
+        assert txt is not None
+        assert txt != ''
+        assert type(num) is int
+        assert num >= 0
         assert db_conn is not None
 
         self.opt_id = opt_id
@@ -523,6 +669,7 @@ class Option:
                     description=self.txt,
                     nb_participant=len(self.voters))
 
+    # TODO replace the Telepot user by fields (decoupling)
     def add_vote_to_db(self, user):
         """
         Register the vote to this option from a user to the database.
@@ -621,13 +768,50 @@ class Option:
                 for opt_id, _, opt_txt, opt_num in rows]
 
 
+# TODO check that votes only occurs on opened plannings
 class Voter:
     """
     Represent a user that has participated to a vote.
 
     Its unique id is provided by Telegram (the user id in the Telegram API)
     and not by the automatic PRIMARY KEY feature of the database.
+
+    Examples:
+        >>> import sqlite3
+        >>> opt = Voter(123, "Chandler", "Bing",
+        ...     sqlite3.connect(":memory:"))
     """
+
+    def create_tables_in_db(db_conn):
+        """
+        Create in the database the tables needed to store Voter instances.
+
+        Arguments:
+            db_conn -- connexion to the database where the Planning will be
+                       saved.
+        """
+        # Preconditions
+        assert db_conn is not None
+
+        # Get a cursor to the db
+        with closing(db_conn.cursor()) as c:
+            # Create the voters table
+            c.execute("""CREATE TABLE voters (
+                v_id INTEGER NOT NULL UNIQUE,
+                first_name TEXT NOT NULL,
+                last_name TEXT
+                )""")
+
+            # Create the votes table used to link voters and options
+            c.execute("""CREATE TABLE votes (
+                opt_id INTEGER NOT NULL,
+                v_id INTEGER NOT NULL,
+                FOREIGN KEY(opt_id) REFERENCES options(opt_id),
+                FOREIGN KEY(v_id) REFERENCES voters(v_id)
+                )""")
+
+        # Save (commit) the changes
+        db_conn.commit()
 
     def __init__(self, v_id, first_name, last_name, db_conn):
         """
@@ -637,7 +821,7 @@ class Voter:
         https://core.telegram.org/bots/api#user
 
         Arguments:
-            v_id -- unique id of the option in the database it is in fact the
+            v_id -- unique id of the voter in the database it is in fact the
                     user id provided by Telegram. It can not be None.
             first_name -- first name of the user it is in fact the first_name
                           provided by Telegram for this user. It can not be

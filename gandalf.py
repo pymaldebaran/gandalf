@@ -23,6 +23,9 @@ import argparse
 # For database access snce we need data persistence
 import sqlite3
 
+# USed to autoclose database cursors and connections
+from contextlib import closing
+
 # For path manipulation
 import os.path
 
@@ -45,6 +48,9 @@ from telepot.delegate import create_open, intercept_callback_query_origin
 # Handlers for the Telegram protocol
 from handlers import PlannerChatHandler
 from handlers import PlannerInlineHandler
+
+# Planning classes for database creation
+from planning import Planning, Option, Voter
 
 __version__ = "0.1.0"
 __author__ = "Pierre-Yves Martin"
@@ -136,40 +142,14 @@ def createdb(db, **kwargs):
         print(LOG_MSG['db_file_deleted'].format(dbfile=db))
 
     # Connect to the persistence database
-    conn = sqlite3.connect(db)
-    c = conn.cursor()
+    with closing(sqlite3.connect(db)) as conn:
+        # Create tables
+        Planning.create_tables_in_db(conn)
+        Option.create_tables_in_db(conn)
+        Voter.create_tables_in_db(conn)
 
-    # Create tables
-    c.execute("""CREATE TABLE plannings (
-        pl_id INTEGER PRIMARY KEY,
-        user_id INTEGER,
-        title TEXT NOT NULL,
-        status TEXT NOT NULL
-        )""")
-    c.execute("""CREATE TABLE options (
-        opt_id INTEGER PRIMARY KEY,
-        pl_id INTEGER NOT NULL,
-        txt TEXT NOT NULL,
-        num INTEGER NOT NULL,
-        FOREIGN KEY(pl_id) REFERENCES plannings(pl_id)
-        )""")
-    c.execute("""CREATE TABLE voters (
-        v_id INTEGER NOT NULL UNIQUE,
-        first_name TEXT NOT NULL,
-        last_name TEXT
-        )""")
-    c.execute("""CREATE TABLE votes (
-        opt_id INTEGER NOT NULL,
-        v_id INTEGER NOT NULL,
-        FOREIGN KEY(opt_id) REFERENCES options(opt_id),
-        FOREIGN KEY(v_id) REFERENCES voters(v_id)
-        )""")
-
-    # Save (commit) the changes
-    conn.commit()
-
-    # Close the connexion to the database
-    conn.close()
+        # Save (commit) the changes
+        conn.commit()
 
     # Some feed back in the logs
     print(LOG_MSG['db_file_created'].format(dbfile=db))
