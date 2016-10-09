@@ -1,1 +1,2 @@
 telepot>=9.1
+pytest>=3.0.0

@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """Test file for planning classes of the gandalf project."""
 
+# For test utilities
+import pytest
+
 # For database access snce we need data persistence
 import sqlite3
 
@@ -137,4 +140,37 @@ def test_can_not_modify_planning_options():
         with pytest.raises(TypeError) as excinfo:
             # trying to set the first option
             pl.options[0] = Option(None, pl.pl_id, "never", 0, conn)
+        assert "object does not support item assignment" in excinfo.value
+
+
+def test_can_not_modify_planning_voters():
+    """Ensure that it's not possible to modify the planning's voters."""
+    with closing(sqlite3.connect(":memory:")) as conn:
+        # First populate the database
+        Planning.create_tables_in_db(conn)
+        Option.create_tables_in_db(conn)
+
+        # Create a planning with some options
+        pl = Planning(
+            pl_id=None,
+            user_id=123,
+            title="Crappy breakfast",
+            status=Planning.Status.UNDER_CONSTRUCTION,
+            db_conn=conn)
+        pl.save_to_db()
+        pl.add_option("Saturday 6AM")
+        pl.options[-1].save_to_db()
+        pl.add_option("Saturday 7AM")
+        pl.options[-1].save_to_db()
+        pl.add_option("Sunday 8AM")
+        pl.options[-1].save_to_db()
+
+        # Let's vote !
+        pl.option[0].add_vote_to_db(User(id=123456, first_name="Monica"))
+        pl.option[0].add_vote_to_db(User(id=456789, first_name="Rachel"))
+        pl.option[2].add_vote_to_db(User(id=987654, first_name="Phoebe"))
+
+        with pytest.raises(TypeError) as excinfo:
+            # trying to set the first option
+            pl.voter[2] = Voter(111111, "Ursula", "Bouffay", conn)
         assert "object does not support item assignment" in excinfo.value
