@@ -110,3 +110,31 @@ def test_voter_create_tables_in_db():
             assert len(votes_columns) == 2
             assert ('opt_id', 'INTEGER') == votes_columns.popleft()[1:3]
             assert ('v_id', 'INTEGER') == votes_columns.popleft()[1:3]
+
+
+def test_can_not_modify_planning_options():
+    """Ensure that it's not possible to modify the planning's options."""
+    with closing(sqlite3.connect(":memory:")) as conn:
+        # First populate the database
+        Planning.create_tables_in_db(conn)
+        Option.create_tables_in_db(conn)
+
+        # Create a planning with some options
+        pl = Planning(
+            pl_id=None,
+            user_id=123,
+            title="Crappy breakfast",
+            status=Planning.Status.UNDER_CONSTRUCTION,
+            db_conn=conn)
+        pl.save_to_db()
+        pl.add_option("Saturday 6AM")
+        pl.options[-1].save_to_db()
+        pl.add_option("Saturday 7AM")
+        pl.options[-1].save_to_db()
+        pl.add_option("Sunday 8AM")
+        pl.options[-1].save_to_db()
+
+        with pytest.raises(TypeError) as excinfo:
+            # trying to set the first option
+            pl.options[0] = Option(None, pl.pl_id, "never", 0, conn)
+        assert "object does not support item assignment" in excinfo.value
