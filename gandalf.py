@@ -23,8 +23,11 @@ import argparse
 # For database access snce we need data persistence
 import sqlite3
 
-# USed to autoclose database cursors and connections
+# Used to autoclose database cursors and connections
 from contextlib import closing
+
+# Used to redirect stderr to /dev/null when performing doctests
+from contextlib import redirect_stdout
 
 # For path manipulation
 import os.path
@@ -182,50 +185,66 @@ def autotest(*args, **kwargs):
     print("DOCTESTS".center(80, '#'))
     print("Tests examples from the documentation".center(80, '-'))
     for file_with_doctest in NON_TEST_FILES:
-        nb_fails, nb_tests = doctest.testmod(
-            __import__(file_with_doctest[:-3]),
-            verbose=False)
+        with closing(open(os.devnull, 'w')) as devnull:
+            with redirect_stdout(devnull):
+                nb_fails, nb_tests = doctest.testmod(
+                    __import__(file_with_doctest[:-3]),
+                    verbose=False,
+                    report=False)
         if nb_tests == 0:
             continue
         nb_oks = nb_tests - nb_fails
-        print(file_with_doctest, " : ",
+        print(file_with_doctest, ": ",
               nb_oks, "/", nb_tests, "tests are OK.")
         if nb_fails > 0:
             print("FAIL")
-            print("     To have more details about the errors you should try "
-                  "the command: python3 -m doctest -v", file_with_doctest, "\n")
+            print("--> To have more details about the errors you should try "
+                  "the command:")
+            print("    python3 -m doctest", file_with_doctest, "\n")
         else:
             print("SUCCESS\n")
 
     # Unit tests
-    if os.path.exists("test_gandalf.py"):
-        print("UNIT TESTS".center(80, '#'))
-        print("Tests every functionnality in deep".center(80, '-'))
+    print("UNIT TESTS".center(80, '#'))
+    print("Tests every functionnality in deep".center(80, '-'))
+    unit_fail_file = []
+    for file_with_unittest in UNIT_TEST_FILES:
+        print(file_with_unittest, ": ", end='')
         unit_result = pytest.main([
             "--quiet",
             "--color=no",
-            "--tb=line"] + UNIT_TEST_FILES)
+            "--tb=line",
+            file_with_unittest])
         if unit_result not in (PYTEST_EXIT_OK, PYTEST_EXIT_NOTESTSCOLLECTED):
-            print("FAIL")
-            print("     To have more details about the errors you should try "
-                  "the command: py.test", " ".join(UNIT_TEST_FILES))
-        else:
-            print("SUCCESS")
+            unit_fail_file.append(file_with_unittest)
+
+    if unit_fail_file:
+        print("FAIL")
+        print("--> To have more details about the errors you should try "
+              "the command:")
+        print("    py.test", ' '.join(unit_fail_file))
+    else:
+        print("SUCCESS")
 
     # Functional tests
-    if os.path.exists("test_functional.py"):
-        print("FUNCTIONAL TESTS".center(80, '#'))
-        print("Tests actual real life usage and data".center(80, '-'))
+    print("FUNCTIONAL TESTS".center(80, '#'))
+    print("Tests actual real life usage and data".center(80, '-'))
+    func_fail_file = []
+    for file_with_functest in FUNCTIONNAL_TEST_FILES:
         func_result = pytest.main([
             "--quiet",
             "--color=no",
-            "--tb=line"] + FUNCTIONNAL_TEST_FILES)
+            "--tb=line",
+            file_with_functest])
         if func_result not in (PYTEST_EXIT_OK, PYTEST_EXIT_NOTESTSCOLLECTED):
-            print("FAIL")
-            print("     To have more details about the errors you should try "
-                  "the command: py.test", " ".join(FUNCTIONNAL_TEST_FILES))
-        else:
-            print("SUCCESS")
+            func_fail_file.append(file_with_functest)
+
+    if func_fail_file:
+        print("FAIL")
+        print("--> To have more details about the errors you should try "
+              "the command: py.test", ' '.join(func_fail_file))
+    else:
+        print("SUCCESS")
 
 
 def main():
