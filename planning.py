@@ -280,7 +280,7 @@ class Planning:
         c = self._db_conn.cursor()
         c.execute(
             """SELECT * FROM plannings WHERE pl_id=?""",
-            (self.pl_id))
+            (self.pl_id,))
         rows = c.fetchall()
         c.close()
 
@@ -542,6 +542,7 @@ class Planning:
             return None
 
 
+# TODO add a planning property for clean retreival of the attached planning
 class Option:
     """
     Represent a possible option for a planning.
