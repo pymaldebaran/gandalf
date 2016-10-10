@@ -153,8 +153,13 @@ class Planning:
         self.pl_id = pl_id
         self.user_id = user_id
         self.title = title
-        self.status = status
+        self._status = status
         self._db_conn = db_conn
+
+    @property
+    def status(self):
+        """Ensure read only access to the status of the planning."""
+        return self._status
 
     @property
     def options(self):
@@ -185,14 +190,14 @@ class Planning:
         # Preconditions
         assert self.status == Planning.Status.UNDER_CONSTRUCTION
 
-        self.status = Planning.Status.OPENED
+        self._status = Planning.Status.OPENED
 
     def close(self):
         """Switch the status of the object from opened to closed."""
         # Preconditions
         assert self.status == Planning.Status.OPENED
 
-        self.status = Planning.Status.CLOSED
+        self._status = Planning.Status.CLOSED
 
     def add_option(self, txt):
         """
