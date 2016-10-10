@@ -18,9 +18,12 @@ Examples:
     ...     status=Planning.Status.UNDER_CONSTRUCTION,
     ...     db_conn=conn)
     >>> pl.save_to_db()
-    >>> pl.add_option("Monday 8PM")
-    >>> pl.add_option("Thursday 9PM")
-    >>> pl.add_option("Saturday 11PM")
+    >>> pl.add_option("Monday 8PM")  # doctest: +ELLIPSIS
+    Option<opt_id=..., pl_id=..., txt='Monday 8PM', num=0>
+    >>> pl.add_option("Thursday 9PM")  # doctest: +ELLIPSIS
+    Option<opt_id=..., pl_id=..., txt='Thursday 9PM', num=1>
+    >>> pl.add_option("Saturday 11PM")  # doctest: +ELLIPSIS
+    Option<opt_id=..., pl_id=..., txt='Saturday 11PM', num=2>
     >>> print(pl.full_description())
     *Fancy diner*
     <BLANKLINE>
@@ -41,7 +44,9 @@ Examples:
     👥 0 people participated so far. _Planning Opened_.
     >>> from telepot.namedtuple import User
     >>> pl.options[0].add_vote_to_db(User(id=123456789, first_name='Chandler'))
+    Voter<v_id=123456789, first_name='Chandler', last_name=''>
     >>> pl.options[1].add_vote_to_db(User(id=987654321, first_name='Joey'))
+    Voter<v_id=987654321, first_name='Joey', last_name=''>
     >>> pl.close()
     >>> pl.update_to_db()
     >>> print(pl.full_description())
@@ -63,6 +68,12 @@ from contextlib import closing
 
 # Used to represent users obtained from Telegram messages
 import telepot
+
+
+class LogicError(RuntimeError):
+    """Error to raise when the internal logic of gandalf is violated."""
+
+    pass
 
 
 # TODO include all the db manipulations inside the real semantic methods
@@ -205,6 +216,9 @@ class Planning:
 
         Arguments:
             txt -- String text of the option.
+
+        Returns:
+            The new Option instance created.
         """
         # Create the new Option object
         opt = Option(
@@ -216,6 +230,8 @@ class Planning:
 
         # Save the option to database
         opt.save_to_db()
+
+        return opt
 
     def short_description(self, num):
         """
@@ -623,6 +639,24 @@ class Option:
         self.num = num
         self._db_conn = db_conn
 
+    def __repr__(self):
+        """String representation of an Option instance."""
+        return "Option<opt_id={}, pl_id={}, txt={}, num={}>".format(
+            self.opt_id, self.pl_id, repr(self.txt), self.num)
+
+    def __eq__(self, other):
+        """
+        Equality operator for Option instances.
+
+        Returns:
+            True if all attribute are equal (ignoring _db_conn).
+            Else in all other cases.
+        """
+        return (self.opt_id == other.opt_id and
+                self.pl_id == other.pl_id and
+                self.txt == other.txt and
+                self.num == other.num)
+
     @property
     def voters(self):
         """
@@ -709,6 +743,9 @@ class Option:
 
         Arguments:
             user -- telebot namedtuple User corresponding to the voter.
+
+        Returns:
+            Voter instance representing the user that voted in the database.
         """
         # Preconditions
         assert type(user) is telepot.namedtuple.User
@@ -730,6 +767,8 @@ class Option:
             (self.opt_id, voter.v_id))
         self._db_conn.commit()
         c.close()
+
+        return voter
 
     @staticmethod
     def load_from_db(db_conn, pl_id, opt_num):
@@ -873,8 +912,25 @@ class Voter:
 
         self.v_id = v_id
         self.first_name = first_name
-        self.last_name = last_name
+        self.last_name = last_name or ''
         self._db_conn = db_conn
+
+    def __repr__(self):
+        """String representation of a Voter instance."""
+        return "Voter<v_id={}, first_name={}, last_name={}>".format(
+            self.v_id, repr(self.first_name), repr(self.last_name))
+
+    def __eq__(self, other):
+        """
+        Equality operator for Voter instances.
+
+        Returns:
+            True if all attribute are equal (ignoring _db_conn).
+            Else in all other cases.
+        """
+        return (self.v_id == other.v_id and
+                self.first_name == other.first_name and
+                self.last_name == other.last_name)
 
     def is_in_db(self):
         """
