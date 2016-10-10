@@ -18,6 +18,7 @@ from telepot.namedtuple import User
 
 # Planning module elements to test
 from planning import Planning, Option, Voter
+from planning import LogicError
 
 
 def test_planning_create_tables_in_db():
@@ -194,7 +195,7 @@ def test_planning_open_allow_votes():
             status=Planning.Status.UNDER_CONSTRUCTION,
             db_conn=conn)
         pl.save_to_db()
-        pl.add_option("Stop this wedding!")
+        only_option = pl.add_option("Stop this wedding!")
 
         # Try to vote before openning
         with pytest.raises(LogicError,
