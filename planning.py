@@ -203,12 +203,18 @@ class Planning:
 
         self._status = Planning.Status.OPENED
 
+        # save the changes
+        self.update_to_db()
+
     def close(self):
         """Switch the status of the object from opened to closed."""
         # Preconditions
         assert self.status == Planning.Status.OPENED
 
         self._status = Planning.Status.CLOSED
+
+        # save the changes
+        self.update_to_db()
 
     def add_option(self, txt):
         """
@@ -422,6 +428,38 @@ class Planning:
         opt.add_vote_to_db(voter)
 
     @staticmethod
+    def load_from_db(pl_id, db_conn):
+        """
+        Load the planning with the specified planning id.
+
+        Arguments:
+            pl_id -- Unique planning id in the database.
+            db_conn -- connexion to the database from which to load the
+                       plannings.
+
+        Returns:
+            A Planning object built from the database.
+        """
+        # Preconditions
+        assert db_conn is not None
+        assert type(pl_id) is int
+
+        # Retreive all the planning data from the db as tuple
+        with closing(db_conn.cursor()) as c:
+            c.execute('SELECT * FROM plannings WHERE pl_id=?', (pl_id,))
+            rows = c.fetchall()
+
+        # Create the Planning instance
+        assert len(rows) == 1
+        _, user_id, title, status = rows[0]
+        return Planning(
+            pl_id=pl_id,
+            user_id=user_id,
+            title=title,
+            status=status,
+            db_conn=db_conn)
+
+    @staticmethod
     def load_all_from_db(user_id, db_conn):
         """
         Load all the planning belonging to the user in the database.
@@ -558,7 +596,6 @@ class Planning:
             return None
 
 
-# TODO add a planning property for clean retreival of the attached planning
 class Option:
     """
     Represent a possible option for a planning.
@@ -669,6 +706,11 @@ class Option:
         return Voter.load_all_from_option_id_from_db(
             self._db_conn, self.opt_id)
 
+    @property
+    def planning(self):
+        """Return a Planning object to which the option is linked."""
+        return Planning.load_from_db(self.pl_id, self._db_conn)
+
     def is_in_db(self):
         """
         Check if the Option instance is already in database.
@@ -746,10 +788,17 @@ class Option:
 
         Returns:
             Voter instance representing the user that voted in the database.
+
+        Exceptions:
+            LogicError -- if the status of the planning is not "opened".
         """
         # Preconditions
         assert type(user) is telepot.namedtuple.User
         assert self._db_conn is not None
+
+        # We can only vote in an opened planning
+        if self.planning.status != Planning.Status.OPENED:
+            raise LogicError("Planning not opened: impossible to vote.")
 
         # Insert the user to the database if not present else update its info
         voter = Voter.create_or_update_to_db(
@@ -840,7 +889,6 @@ class Option:
                       for opt_id, _, opt_txt, opt_num in rows])
 
 
-# TODO check that votes only occurs on opened plannings
 class Voter:
     """
     Represent a user that has participated to a vote.

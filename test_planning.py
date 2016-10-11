@@ -166,6 +166,7 @@ def test_can_not_modify_planning_voters():
         pl.add_option("Saturday 6AM")
         pl.add_option("Saturday 7AM")
         pl.add_option("Sunday 8AM")
+        pl.open()
 
         # Let's vote !
         pl.options[0].add_vote_to_db(User(id=123456, first_name="Monica"))
@@ -180,7 +181,6 @@ def test_can_not_modify_planning_voters():
 
 
 # TODO use FakeUSer
-@pytest.mark.skip
 def test_planning_open_allow_votes():
     """Ensure we can not vote before planning opening but can after."""
     with closing(sqlite3.connect(":memory:")) as conn:
@@ -200,9 +200,9 @@ def test_planning_open_allow_votes():
         only_option = pl.add_option("Stop this wedding!")
 
         # Try to vote before openning
-        with pytest.raises(LogicError,
-                           message="Planning not opened: impossible to vote"):
+        with pytest.raises(LogicError) as excinfo:
             only_option.add_vote_to_db(User(id=666666, first_name="Janice"))
+        assert "Planning not opened: impossible to vote" in str(excinfo.value)
 
         pl.open()
 
@@ -211,7 +211,6 @@ def test_planning_open_allow_votes():
 
 
 # TODO use FakeUSer
-@pytest.mark.skip
 def test_planning_close_forbid_votes():
     """Ensure we can not vote after planning closing."""
     with closing(sqlite3.connect(":memory:")) as conn:
@@ -236,10 +235,10 @@ def test_planning_close_forbid_votes():
 
         pl.close()
 
-        # Try to vote after opening
-        with pytest.raises(LogicError,
-                           message="Planning not opened: impossible to vote"):
+        # Try to vote after closing
+        with pytest.raises(LogicError) as excinfo:
             only_option.add_vote_to_db(User(id=246800, first_name="Chandler"))
+        assert "Planning not opened: impossible to vote." in str(excinfo.value)
 
 
 # TODO use FakeUSer
