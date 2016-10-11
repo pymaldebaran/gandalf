@@ -222,7 +222,7 @@ def autotest(*args, **kwargs):
         print("FAIL")
         print("--> To have more details about the errors you should try "
               "the command:")
-        print("    py.test", ' '.join(unit_fail_file))
+        print("    py.test", ' '.join(unit_fail_file), '-x -v -l')
     else:
         print("SUCCESS")
 
