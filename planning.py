@@ -76,6 +76,32 @@ class LogicError(RuntimeError):
     pass
 
 
+def is_vote_in_db(voter, opt, db_conn):
+    """
+    Check if a vote exists in database for the voter on the option.
+
+    Arguments:
+        voter -- Voter instance representing a voter in database.
+        opt -- Option instance representing an option in database.
+        db_conn -- connection to the database.
+
+    Returns:
+        True if a vote exist to the specified option in the database.
+    """
+    # Preconditionss
+    assert db_conn is not None
+
+    with closing(db_conn.cursor()) as cursor:
+        cursor.execute('SELECT * FROM votes WHERE opt_id=? AND v_id=?',
+                       (opt.opt_id, voter.v_id))
+        votes = cursor.fetchall()
+
+    # Postconditions
+    assert len(votes) in (0, 1)
+
+    return len(votes) == 1
+
+
 # TODO include all the db manipulations inside the real semantic methods
 class Planning:
     """
@@ -360,7 +386,6 @@ class Planning:
         self._db_conn.commit()
         c.close()
 
-    # TODO remove votes from database too
     def remove_from_db(self):
         """
         Remove the Planning object and dependancies from the database.
@@ -378,17 +403,25 @@ class Planning:
         # Get a connexion to the database
         c = self._db_conn.cursor()
 
-        # First try to remove the option if any
+        # First remove the votes if any
+        c.execute("""DELETE FROM votes WHERE opt_id IN
+                     (SELECT opt_id FROM options WHERE pl_id=?)""",
+                  (self.pl_id,))
+
+        # Then remove the option if any
         c.execute('DELETE FROM options WHERE pl_id=?', (self.pl_id,))
 
         # Remove the planning itself from the database
         c.execute('DELETE FROM plannings WHERE pl_id=?', (self.pl_id,))
-
         # Check the results of the planning delete
         assert c.rowcount != 0, "Tried to remove planning with id {id} that "\
             "doesn't exist in database.".format(id=self.pl_id)
         assert c.rowcount < 2, "Removed more than one planning with id {id} "\
             "from the database.".format(id=self.pl_id)
+
+        # At last we remove all the user associated with no vote
+        c.execute("""DELETE FROM voters WHERE v_id NOT IN
+                     (SELECT v_id FROM votes)""")
 
         # Once the results are checked we can commit and close cursor
         self._db_conn.commit()
