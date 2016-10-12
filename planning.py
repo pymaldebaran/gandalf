@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
+u"""
 Gandalf bot planning entities.
 
 All classes needed to encapsultale the underlying database tables needed by
@@ -427,39 +427,6 @@ class Planning:
         self._db_conn.commit()
         c.close()
 
-    # TODO make this an instance method
-    # TODO add an remove_vote_to_db and check if a vote already exists
-    # TODO add a toggle_vote_to_db that use add/remove_vote_to_db
-    # TODO replace the Telepot user by fields (decoupling)
-    @staticmethod
-    def add_vote_to_db(pl_id, opt_num, voter, db_conn):
-        """
-        Register a user vote for an option of the planning to the database.
-
-        Arguments:
-            pl_id -- planning id in the database.
-            opt_num -- voted option number in the database for this planning.
-            voter -- telebot namedtuple User corresponding to the voter.
-            db_conn -- connexion to the database to which update the plannings.
-        """
-        # Preconditions
-        assert type(pl_id) is int
-        assert type(opt_num) is int
-        assert type(voter) is telepot.namedtuple.User
-        assert db_conn is not None
-
-        # Retreive the option from database
-        opt = Option.load_from_db(
-            db_conn=db_conn,
-            pl_id=pl_id,
-            opt_num=opt_num)
-        assert opt is not None, "It's not possible to vote for an inexistant "\
-            "option. In planning <{pl_id}> trying to vote for option number "\
-            "{opt_num}.".format(pl_id=pl_id, opt_num=opt_num)
-
-        # Register the voter in the vote table
-        opt.add_vote_to_db(voter)
-
     @staticmethod
     def load_from_db(pl_id, db_conn):
         """
@@ -811,6 +778,8 @@ class Option:
                     description=self.txt,
                     nb_participant=len(self.voters))
 
+    # TODO add an remove_vote_to_db and check if a vote already exists
+    # TODO add a toggle_vote_to_db that use add/remove_vote_to_db
     # TODO replace the Telepot user by fields (decoupling)
     def add_vote_to_db(self, user):
         """

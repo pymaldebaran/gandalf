@@ -533,12 +533,19 @@ class PlannerInlineHandler(
         query = CallbackQuery(**msg)
 
         # Register the vote
-        # TODO use toggle_vote_to_db instead
-        Planning.add_vote_to_db(
+
+        # Retreive the option from database
+        opt = Option.load_from_db(
+            db_conn=self._conn,
             pl_id=pl_id,
-            opt_num=opt_num,
-            voter=query.from_,
-            db_conn=self._conn)
+            opt_num=opt_num)
+        assert opt is not None, "It's not possible to vote for an inexistant "\
+            "option. In planning <{pl_id}> trying to vote for option number "\
+            "{opt_num}.".format(pl_id=pl_id, opt_num=opt_num)
+
+        # TODO use toggle_vote_to_db instead
+        # Register the voter in the vote table
+        opt.add_vote_to_db(query.from_)
 
         # Edit the planning post
         # TODO put some actual code here
