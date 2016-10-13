@@ -19,7 +19,7 @@ from telepot.namedtuple import User
 
 # Planning module elements to test
 from planning import Planning, Option, Voter
-from planning import LogicError, MultipleVoteError
+from planning import PlanningNotOpenedError, MultipleVoteError
 from planning import is_vote_in_db
 
 
@@ -195,6 +195,7 @@ def test_can_not_modify_planning_voters(init_planning_db):
     assert "object does not support item assignment" in str(excinfo.value)
 
 
+# TODO add same test for Option.remove_vote_to_db()
 def test_planning_open_allow_votes(init_planning_db):
     """Ensure we can not vote before planning opening but can after."""
     conn = init_planning_db
@@ -210,9 +211,8 @@ def test_planning_open_allow_votes(init_planning_db):
     only_option = pl.add_option("Stop this wedding!")
 
     # Try to vote before openning
-    with pytest.raises(LogicError) as excinfo:
+    with pytest.raises(PlanningNotOpenedError) as excinfo:
         only_option.add_vote_to_db(FakeUser("Janice"))
-    assert "Planning not opened: impossible to vote" in str(excinfo.value)
 
     pl.open()
 
@@ -220,6 +220,7 @@ def test_planning_open_allow_votes(init_planning_db):
     only_option.add_vote_to_db(FakeUser("Richard"))
 
 
+# TODO add same test for Option.remove_vote_to_db()
 def test_planning_close_forbid_votes(init_planning_db):
     """Ensure we can not vote after planning closing."""
     conn = init_planning_db
@@ -241,9 +242,8 @@ def test_planning_close_forbid_votes(init_planning_db):
     pl.close()
 
     # Try to vote after closing
-    with pytest.raises(LogicError) as excinfo:
+    with pytest.raises(PlanningNotOpenedError) as excinfo:
         only_option.add_vote_to_db(User(id=246800, first_name="Chandler"))
-    assert "Planning not opened: impossible to vote." in str(excinfo.value)
 
 
 def test_planning_add_option_to_db_returns_option(init_planning_db):

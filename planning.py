@@ -82,6 +82,12 @@ class MultipleVoteError(LogicError):
     pass
 
 
+class PlanningNotOpenedError(LogicError):
+    """Raised when trying to vote in a Planning that is not opened."""
+
+    pass
+
+
 def is_vote_in_db(voter, opt, db_conn):
     """
     Check if a vote exists in database for the voter on the option.
@@ -796,7 +802,7 @@ class Option:
 
         # We can only vote in an opened planning
         if self.planning.status != Planning.Status.OPENED:
-            raise LogicError("Planning not opened: impossible to vote.")
+            raise PlanningNotOpenedError()
 
         if type(user) is Voter:
             # We simply rename the user since its already a voter
