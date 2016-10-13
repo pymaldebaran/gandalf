@@ -142,46 +142,6 @@ def test_voter_create_tables_in_db():
             assert ('v_id', 'INTEGER') == votes_columns.popleft()[1:3]
 
 
-def test_is_vote_in_db_works(init_planning_db):
-    """Ensure that Planning.is_vote_in_db() works correctly."""
-    conn = init_planning_db
-
-    # Create a first planning with some options
-    pl = Planning(None, 123, "Who wants the rooster out?",
-                  Planning.Status.UNDER_CONSTRUCTION,
-                  db_conn=conn)
-    pl.save_to_db()
-    want = pl.add_option("I want!")
-    pl.open()
-    # And now we vote
-    monica = want.add_vote_to_db(FakeUser("Monica"))
-    rachel = want.add_vote_to_db(FakeUser("Rachel"))
-
-    # Create a second planning with some options
-    pl = Planning(
-        pl_id=None,
-        user_id=123,
-        title="Do you prefer jam or women?",
-        status=Planning.Status.UNDER_CONSTRUCTION,
-        db_conn=conn)
-    pl.save_to_db()
-    jam = pl.add_option("Jam")
-    women = pl.add_option("Women")
-    pl.open()
-    # And now we vote
-    joey = jam.add_vote_to_db(FakeUser("Joey"))
-    joey = women.add_vote_to_db(FakeUser("Joey"))
-
-    # Test the presence of votes
-    assert is_vote_in_db(monica, want, conn)
-    assert is_vote_in_db(rachel, want, conn)
-    assert is_vote_in_db(joey, jam, conn)
-    assert is_vote_in_db(joey, women, conn)
-    assert not is_vote_in_db(joey, want, conn)
-    assert not is_vote_in_db(monica, jam, conn)
-    assert not is_vote_in_db(rachel, jam, conn)
-
-
 # Planning class tests ########################################################
 def test_can_not_modify_planning_options(init_planning_db):
     """Ensure that it's not possible to modify the planning's options."""
@@ -313,36 +273,6 @@ def test_planning_add_option_to_db_returns_option(init_planning_db):
     assert women in pl.options
 
 
-def test_planning_add_vote_to_db_returns_voter(init_planning_db):
-    """Test if add_vote_to_db() method returns the correct voter."""
-    conn = init_planning_db
-
-    # Create a planning with some options
-    pl = Planning(
-        pl_id=None,
-        user_id=123,
-        title="Who wants the rooster out?",
-        status=Planning.Status.UNDER_CONSTRUCTION,
-        db_conn=conn)
-    pl.save_to_db()
-    only_option = pl.add_option("I want!")
-    pl.open()
-    # And now we vote
-    monica = only_option.add_vote_to_db(FakeUser("Monica"))
-    rachel = only_option.add_vote_to_db(FakeUser("Rachel"))
-
-    # Tests the users
-    assert monica is not None
-    assert rachel is not None
-
-    assert monica.is_in_db()
-    assert rachel.is_in_db()
-
-    assert len(pl.voters) == 2
-    assert monica in pl.voters
-    assert rachel in pl.voters
-
-
 def test_planning_remove_from_db_erase_all_related_rows(init_planning_db):
     """Ensure that all the options, voters and votes are removed from db."""
     conn = init_planning_db
@@ -450,6 +380,81 @@ def test_option_belong_to_sequence():
     assert opt1 in [opt1]
     assert opt1 in [opt1, opt2, opt3]
     assert opt1 in [opt3, opt2, opt1]  # order doesn't matter
+
+
+def test_option_add_vote_to_db_returns_voter(init_planning_db):
+    """Test if add_vote_to_db() method returns the correct voter."""
+    conn = init_planning_db
+
+    # Create a planning with some options
+    pl = Planning(
+        pl_id=None,
+        user_id=123,
+        title="Who wants the rooster out?",
+        status=Planning.Status.UNDER_CONSTRUCTION,
+        db_conn=conn)
+    pl.save_to_db()
+    only_option = pl.add_option("I want!")
+    pl.open()
+    # And now we vote
+    monica = only_option.add_vote_to_db(FakeUser("Monica"))
+    rachel = only_option.add_vote_to_db(FakeUser("Rachel"))
+
+    # Tests the users
+    assert monica is not None
+    assert rachel is not None
+
+    assert monica.is_in_db()
+    assert rachel.is_in_db()
+
+    assert len(pl.voters) == 2
+    assert monica in pl.voters
+    assert rachel in pl.voters
+
+
+def test_add_and_remove_to_db_works(init_planning_db):
+    """Ensure that Planning.is_vote_in_db() works correctly."""
+    conn = init_planning_db
+
+    # Create a first planning with some options
+    pl = Planning(None, 123, "Who wants the rooster out?",
+                  Planning.Status.UNDER_CONSTRUCTION,
+                  db_conn=conn)
+    pl.save_to_db()
+    want = pl.add_option("I want!")
+    pl.open()
+    # And now we vote
+    monica = want.add_vote_to_db(FakeUser("Monica"))
+    rachel = want.add_vote_to_db(FakeUser("Rachel"))
+
+    # Create a second planning with some options
+    pl = Planning(
+        pl_id=None,
+        user_id=123,
+        title="Do you prefer jam or women?",
+        status=Planning.Status.UNDER_CONSTRUCTION,
+        db_conn=conn)
+    pl.save_to_db()
+    jam = pl.add_option("Jam")
+    women = pl.add_option("Women")
+    pl.open()
+    # And now we vote
+    joey = jam.add_vote_to_db(FakeUser("Joey"))
+    joey = women.add_vote_to_db(FakeUser("Joey"))
+
+    # Test the presence of votes
+    assert is_vote_in_db(monica, want, conn)
+    assert is_vote_in_db(rachel, want, conn)
+    assert is_vote_in_db(joey, jam, conn)
+    assert is_vote_in_db(joey, women, conn)
+    assert not is_vote_in_db(joey, want, conn)
+    assert not is_vote_in_db(monica, jam, conn)
+    assert not is_vote_in_db(rachel, jam, conn)
+
+    # Lets's change our mind !
+    jam.remove_vote_to_db(joey)
+    assert not is_vote_in_db(joey, jam, conn)
+    assert is_vote_in_db(joey, women, conn)
 
 
 # Voter class tests ###########################################################

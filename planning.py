@@ -137,6 +137,7 @@ class Planning:
         OPENED = "Opened"
         CLOSED = "Closed"
 
+    @staticmethod
     def create_tables_in_db(db_conn):
         """
         Create in the database the tables needed to store Planning instances.
@@ -325,12 +326,11 @@ class Planning:
             return False
 
         # Search in database
-        c = self._db_conn.cursor()
-        c.execute(
-            """SELECT * FROM plannings WHERE pl_id=?""",
-            (self.pl_id,))
-        rows = c.fetchall()
-        c.close()
+        with closing(self._db_conn.cursor()) as c:
+            c.execute(
+                """SELECT * FROM plannings WHERE pl_id=?""",
+                (self.pl_id,))
+            rows = c.fetchall()
 
         # Is it present ?
         if len(rows) > 0:
@@ -354,15 +354,14 @@ class Planning:
             "once."
 
         # Save to database
-        c = self._db_conn.cursor()
-        c.execute(
-            """INSERT INTO plannings(user_id, title, status)
-                VALUES (?,?,?)""",
-            (self.user_id, self.title, self.status))
-        # Retreive the new id
-        new_pl_id = c.lastrowid
-        self._db_conn.commit()
-        c.close()
+        with closing(self._db_conn.cursor()) as c:
+            c.execute(
+                """INSERT INTO plannings(user_id, title, status)
+                    VALUES (?,?,?)""",
+                (self.user_id, self.title, self.status))
+            # Retreive the new id
+            new_pl_id = c.lastrowid
+            self._db_conn.commit()
 
         # Set the id in the instance
         self.pl_id = new_pl_id
@@ -370,21 +369,19 @@ class Planning:
     def update_to_db(self):
         """Update the Planning object status to the provided database."""
         # Get a connexion to the database
-        c = self._db_conn.cursor()
+        with closing(self._db_conn.cursor()) as c:
+            # Update the planning's status in the database
+            c.execute("UPDATE plannings SET status=? WHERE pl_id=?",
+                      (self.status, self.pl_id))
 
-        # Update the planning's status in the database
-        c.execute("UPDATE plannings SET status=? WHERE pl_id=?",
-                  (self.status, self.pl_id))
+            # Check the results of the planning update consistancy
+            assert c.rowcount != 0, "Tried to update planning with id {id} "\
+                "that doesn't exist in database.".format(id=self.pl_id)
+            assert c.rowcount == 1, "Updated more than one planning with "\
+                "id {id} from the database.".format(id=self.pl_id)
 
-        # Check the results of the planning update consistancy
-        assert c.rowcount != 0, "Tried to update planning with id {id} that "\
-            "doesn't exist in database.".format(id=self.pl_id)
-        assert c.rowcount == 1, "Updated more than one planning with id {id} "\
-            "from the database.".format(id=self.pl_id)
-
-        # Once the results are checked we can commit and close cursor
-        self._db_conn.commit()
-        c.close()
+            # Once the results are checked we can commit and close cursor
+            self._db_conn.commit()
 
     def remove_from_db(self):
         """
@@ -401,31 +398,28 @@ class Planning:
         assert self.pl_id is not None
 
         # Get a connexion to the database
-        c = self._db_conn.cursor()
+        with closing(self._db_conn.cursor()) as c:
+            # First remove the votes if any
+            c.execute("""DELETE FROM votes WHERE opt_id IN
+                         (SELECT opt_id FROM options WHERE pl_id=?)""",
+                      (self.pl_id,))
 
-        # First remove the votes if any
-        c.execute("""DELETE FROM votes WHERE opt_id IN
-                     (SELECT opt_id FROM options WHERE pl_id=?)""",
-                  (self.pl_id,))
+            # Then remove the option if any
+            c.execute('DELETE FROM options WHERE pl_id=?', (self.pl_id,))
 
-        # Then remove the option if any
-        c.execute('DELETE FROM options WHERE pl_id=?', (self.pl_id,))
+            # Remove the planning itself from the database
+            c.execute('DELETE FROM plannings WHERE pl_id=?', (self.pl_id,))
+            # Check the results of the planning delete
+            assert c.rowcount != 0, "Tried to remove planning with id {id} "\
+                "that doesn't exist in database.".format(id=self.pl_id)
+            assert c.rowcount < 2, "Removed more than one planning with "\
+                "id {id} from the database.".format(id=self.pl_id)
 
-        # Remove the planning itself from the database
-        c.execute('DELETE FROM plannings WHERE pl_id=?', (self.pl_id,))
-        # Check the results of the planning delete
-        assert c.rowcount != 0, "Tried to remove planning with id {id} that "\
-            "doesn't exist in database.".format(id=self.pl_id)
-        assert c.rowcount < 2, "Removed more than one planning with id {id} "\
-            "from the database.".format(id=self.pl_id)
+            # Once the results are checked we can commit and close cursor
+            self._db_conn.commit()
 
         # At last we remove all the user associated with no vote
-        c.execute("""DELETE FROM voters WHERE v_id NOT IN
-                     (SELECT v_id FROM votes)""")
-
-        # Once the results are checked we can commit and close cursor
-        self._db_conn.commit()
-        c.close()
+        Voter.remove_all_unused_from_db(self._db_conn)
 
     @staticmethod
     def load_from_db(pl_id, db_conn):
@@ -481,10 +475,9 @@ class Planning:
         assert user_id is not None
 
         # Retreive all the planning data from the db as tuple
-        c = db_conn.cursor()
-        c.execute('SELECT * FROM plannings WHERE user_id=?', (user_id,))
-        rows = c.fetchall()
-        c.close()
+        with closing(db_conn.cursor()) as c:
+            c.execute('SELECT * FROM plannings WHERE user_id=?', (user_id,))
+            rows = c.fetchall()
 
         # Create the Planning instances
         plannings = [Planning(pl_id, user_id, title, status, db_conn)
@@ -519,11 +512,10 @@ class Planning:
         assert db_conn is not None
 
         # Retreival from the database
-        c = db_conn.cursor()
-        c.execute('SELECT * FROM plannings WHERE status=? AND user_id=?',
-                  (Planning.Status.UNDER_CONSTRUCTION, user_id))
-        rows = c.fetchall()
-        c.close()
+        with closing(db_conn.cursor()) as c:
+            c.execute('SELECT * FROM plannings WHERE status=? AND user_id=?',
+                      (Planning.Status.UNDER_CONSTRUCTION, user_id))
+            rows = c.fetchall()
 
         # If we have many instances... it's an error
         assert len(rows) <= 1, "There should never be more than one "\
@@ -568,11 +560,10 @@ class Planning:
         assert db_conn is not None
 
         # Retreival from the database
-        c = db_conn.cursor()
-        c.execute('SELECT * FROM plannings WHERE status=? AND pl_id=?',
-                  (Planning.Status.OPENED, pl_id))
-        rows = c.fetchall()
-        c.close()
+        with closing(db_conn.cursor()) as c:
+            c.execute('SELECT * FROM plannings WHERE status=? AND pl_id=?',
+                      (Planning.Status.OPENED, pl_id))
+            rows = c.fetchall()
 
         # If we have many instances... it's an error
         assert len(rows) <= 1, "There should never be more than one "\
@@ -619,6 +610,7 @@ class Option:
     DESC_FULL = '{description} - 👥 {nb_participant}\n'\
                 '{participants}'
 
+    @staticmethod
     def create_tables_in_db(db_conn):
         """
         Create in the database the tables needed to store Option instances.
@@ -728,12 +720,11 @@ class Option:
             return False
 
         # Search in database
-        c = self._db_conn.cursor()
-        c.execute(
-            """SELECT * FROM options WHERE opt_id=?""",
-            (self.opt_id,))
-        rows = c.fetchall()
-        c.close()
+        with closing(self._db_conn.cursor()) as c:
+            c.execute(
+                """SELECT * FROM options WHERE opt_id=?""",
+                (self.opt_id,))
+            rows = c.fetchall()
 
         # Is it present ?
         if len(rows) > 0:
@@ -757,13 +748,12 @@ class Option:
             "once."
 
         # Insert the new Option to the database
-        c = self._db_conn.cursor()
-        c.execute("INSERT INTO options(pl_id, txt, num) VALUES (?,?,?)",
-                  (self.pl_id, self.txt, self.num))
-        # Retreive the id of the option in the database
-        new_opt_id = c.lastrowid
-        self._db_conn.commit()
-        c.close()
+        with closing(self._db_conn.cursor()) as c:
+            c.execute("INSERT INTO options(pl_id, txt, num) VALUES (?,?,?)",
+                      (self.pl_id, self.txt, self.num))
+            # Retreive the id of the option in the database
+            new_opt_id = c.lastrowid
+            self._db_conn.commit()
 
         # Set the id in the instance
         self.opt_id = new_opt_id
@@ -778,9 +768,9 @@ class Option:
                     description=self.txt,
                     nb_participant=len(self.voters))
 
-    # TODO add an remove_vote_to_db and check if a vote already exists
+    # TODO check if a vote already exists
     # TODO add a toggle_vote_to_db that use add/remove_vote_to_db
-    # TODO replace the Telepot user by fields (decoupling)
+    # TODO replace the Telepot user by Voter instance (decoupling)
     def add_vote_to_db(self, user):
         """
         Register the vote to this option from a user to the database.
@@ -802,6 +792,7 @@ class Option:
         if self.planning.status != Planning.Status.OPENED:
             raise LogicError("Planning not opened: impossible to vote.")
 
+        # TODO move this to Voter.__init__ method
         # Insert the user to the database if not present else update its info
         voter = Voter.create_or_update_to_db(
             v_id=user.id,
@@ -812,14 +803,45 @@ class Option:
         # TODO check if we already have a vote for this option from this user
 
         # Register the voter in the vote table
-        c = self._db_conn.cursor()
-        c.execute(
-            """INSERT INTO votes(opt_id, v_id) VALUES (?,?)""",
-            (self.opt_id, voter.v_id))
-        self._db_conn.commit()
-        c.close()
+        with closing(self._db_conn.cursor()) as c:
+            c.execute(
+                """INSERT INTO votes(opt_id, v_id) VALUES (?,?)""",
+                (self.opt_id, voter.v_id))
+            self._db_conn.commit()
 
         return voter
+
+    def remove_vote_to_db(self, voter):
+        """
+        Unregister the vote to this option from a user to the database.
+
+        This will aslo remove all unused voters from database.
+
+        Arguments:
+            voter -- Voter instance you want to "unvote" the option.
+
+        Exceptions:
+            LogicError -- if the status of the planning is not "opened".
+        """
+        # Preconditions
+        assert type(voter) is Voter
+        assert self._db_conn is not None
+        assert voter.is_in_db()
+        assert self.is_in_db()
+        assert is_vote_in_db(voter, self, self._db_conn)
+
+        # We can only vote in an opened planning
+        if self.planning.status != Planning.Status.OPENED:
+            raise LogicError("Planning not opened: impossible to vote.")
+
+        with closing(self._db_conn.cursor()) as c:
+            # Unregister the voter in the vote table
+            c.execute(
+                """DELETE FROM votes WHERE opt_id=? AND v_id=?""",
+                (self.opt_id, voter.v_id))
+
+        # Remove all the user associated with no vote
+        Voter.remove_all_unused_from_db(self._db_conn)
 
     @staticmethod
     def load_from_db(db_conn, pl_id, opt_num):
@@ -843,11 +865,10 @@ class Option:
         assert type(opt_num) is int
 
         # Retreival from the database
-        c = db_conn.cursor()
-        c.execute('SELECT * FROM options WHERE pl_id=? AND num=?',
-                  (pl_id, opt_num))
-        rows = c.fetchall()
-        c.close()
+        with closing(db_conn.cursor()) as c:
+            c.execute('SELECT * FROM options WHERE pl_id=? AND num=?',
+                      (pl_id, opt_num))
+            rows = c.fetchall()
 
         assert len(rows) <= 1, "Only one option should exist in the base for "\
             "a given planning id <{pl_id}> and a given option number "\
@@ -881,10 +902,10 @@ class Option:
         assert db_conn is not None
 
         # Retreival from the database
-        c = db_conn.cursor()
-        c.execute('SELECT * FROM options WHERE pl_id=? ORDER BY num', (pl_id,))
-        rows = c.fetchall()
-        c.close()
+        with closing(db_conn.cursor()) as c:
+            c.execute('SELECT * FROM options WHERE pl_id=? ORDER BY num',
+                      (pl_id,))
+            rows = c.fetchall()
 
         # Let's build objects from those tuples
         return tuple([Option(opt_id, pl_id, opt_txt, opt_num, db_conn)
@@ -904,6 +925,7 @@ class Voter:
         ...     sqlite3.connect(":memory:"))
     """
 
+    @staticmethod
     def create_tables_in_db(db_conn):
         """
         Create in the database the tables needed to store Voter instances.
@@ -934,6 +956,24 @@ class Voter:
 
         # Save (commit) the changes
         db_conn.commit()
+
+    @staticmethod
+    def remove_all_unused_from_db(db_conn):
+        """
+        Remove all the voter associated with no option in the database.
+
+        Arguments:
+            db_conn -- connexion to the database where the Planning will be
+                       saved.
+        """
+        # Preconditions
+        assert db_conn is not None
+
+        # Unregister the voter in the vote table
+        with closing(db_conn.cursor()) as c:
+            c.execute("""DELETE FROM voters WHERE v_id NOT IN
+                         (SELECT v_id FROM votes)""")
+            db_conn.commit()
 
     def __init__(self, v_id, first_name, last_name, db_conn):
         """
@@ -992,12 +1032,11 @@ class Voter:
             True else.
         """
         # Search in database
-        c = self._db_conn.cursor()
-        c.execute(
-            """SELECT * FROM voters WHERE v_id=?""",
-            (self.v_id,))
-        rows = c.fetchall()
-        c.close()
+        with closing(self._db_conn.cursor()) as c:
+            c.execute(
+                """SELECT * FROM voters WHERE v_id=?""",
+                (self.v_id,))
+            rows = c.fetchall()
 
         # Is it present ?
         if len(rows) > 0:
@@ -1013,12 +1052,11 @@ class Voter:
             "once."
 
         # Insert the new Option to the database
-        c = self._db_conn.cursor()
-        c.execute("INSERT INTO voters(v_id, first_name, last_name) "
-                  "VALUES (?,?,?)",
-                  (self.v_id, self.first_name, self.last_name))
-        self._db_conn.commit()
-        c.close()
+        with closing(self._db_conn.cursor()) as c:
+            c.execute("INSERT INTO voters(v_id, first_name, last_name) "
+                      "VALUES (?,?,?)",
+                      (self.v_id, self.first_name, self.last_name))
+            self._db_conn.commit()
 
     def update_to_db(self):
         """
@@ -1032,12 +1070,11 @@ class Voter:
             "once."
 
         # Insert the new Option to the database
-        c = self._db_conn.cursor()
-        c.execute("UPDATE voters SET first_name=?, last_name=? "
-                  "WHERE v_id=?",
-                  (self.first_name, self.last_name, self.v_id))
-        self._db_conn.commit()
-        c.close()
+        with closing(self._db_conn.cursor()) as c:
+            c.execute("UPDATE voters SET first_name=?, last_name=? "
+                      "WHERE v_id=?",
+                      (self.first_name, self.last_name, self.v_id))
+            self._db_conn.commit()
 
     @staticmethod
     def create_or_update_to_db(v_id, first_name, last_name, db_conn):
@@ -1054,10 +1091,9 @@ class Voter:
         voter = Voter(v_id, first_name, last_name, db_conn)
 
         # Retreive the voter if it already exist in the database
-        c = db_conn.cursor()
-        c.execute('SELECT * FROM voters WHERE v_id=?', (v_id,))
-        rows = c.fetchall()
-        c.close()
+        with closing(db_conn.cursor()) as c:
+            c.execute('SELECT * FROM voters WHERE v_id=?', (v_id,))
+            rows = c.fetchall()
 
         if rows:
             # Voter exist let's update it's info (since user can change them)
@@ -1086,15 +1122,14 @@ class Voter:
             Empty tuple if no such object are found.
         """
         # Retreival from the database
-        c = db_conn.cursor()
-        c.execute("""SELECT DISTINCT v_id, first_name, last_name
-                     FROM voters
-                     NATURAL JOIN votes
-                     NATURAL JOIN options
-                     WHERE pl_id=?
-                     ORDER BY first_name""", (pl_id,))
-        rows = c.fetchall()
-        c.close()
+        with closing(db_conn.cursor()) as c:
+            c.execute("""SELECT DISTINCT v_id, first_name, last_name
+                         FROM voters
+                         NATURAL JOIN votes
+                         NATURAL JOIN options
+                         WHERE pl_id=?
+                         ORDER BY first_name""", (pl_id,))
+            rows = c.fetchall()
 
         # Let's build objects from those tuples
         return tuple([Voter(v_id, first_name, last_name, db_conn)
@@ -1116,15 +1151,14 @@ class Voter:
             Empty list if no such object are found.
         """
         # Retreival from the database
-        c = db_conn.cursor()
-        c.execute("""SELECT DISTINCT v_id, first_name, last_name
-                     FROM voters
-                     NATURAL JOIN votes
-                     NATURAL JOIN options
-                     WHERE opt_id=?
-                     ORDER BY first_name""", (opt_id,))
-        rows = c.fetchall()
-        c.close()
+        with closing(db_conn.cursor()) as c:
+            c.execute("""SELECT DISTINCT v_id, first_name, last_name
+                         FROM voters
+                         NATURAL JOIN votes
+                         NATURAL JOIN options
+                         WHERE opt_id=?
+                         ORDER BY first_name""", (opt_id,))
+            rows = c.fetchall()
 
         # Let's build objects from those tuples
         return [Voter(v_id, first_name, last_name, db_conn)
