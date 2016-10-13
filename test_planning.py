@@ -23,6 +23,7 @@ from planning import LogicError
 from planning import is_vote_in_db
 
 
+# Tests helpers ###############################################################
 def FakeUser(first_name):
     """Helper to easily build Telegram User."""
     return User(
@@ -30,6 +31,19 @@ def FakeUser(first_name):
         first_name=first_name)
 
 
+@pytest.fixture()
+def init_planning_db():
+    """Setup and Teardown for all tests needing a planning & co tables."""
+    with closing(sqlite3.connect(":memory:")) as conn:
+        # Populate the database
+        Planning.create_tables_in_db(conn)
+        Option.create_tables_in_db(conn)
+        Voter.create_tables_in_db(conn)
+
+        yield conn
+
+
+# Database management tests ###################################################
 def test_planning_create_tables_in_db():
     """Test the effect of Planning.create_tables_in_db() on the database."""
     with closing(sqlite3.connect(':memory:')) as conn:
@@ -128,18 +142,6 @@ def test_voter_create_tables_in_db():
             assert ('v_id', 'INTEGER') == votes_columns.popleft()[1:3]
 
 
-@pytest.fixture()
-def init_planning_db():
-    """Setup and Teardown for all tests needing a planning & co tables."""
-    with closing(sqlite3.connect(":memory:")) as conn:
-        # Populate the database
-        Planning.create_tables_in_db(conn)
-        Option.create_tables_in_db(conn)
-        Voter.create_tables_in_db(conn)
-
-        yield conn
-
-
 def test_is_vote_in_db_works(init_planning_db):
     """Ensure that Planning.is_vote_in_db() works correctly."""
     conn = init_planning_db
@@ -180,6 +182,7 @@ def test_is_vote_in_db_works(init_planning_db):
     assert not is_vote_in_db(rachel, jam, conn)
 
 
+# Planning class tests ########################################################
 def test_can_not_modify_planning_options(init_planning_db):
     """Ensure that it's not possible to modify the planning's options."""
     conn = init_planning_db
@@ -418,6 +421,7 @@ def test_planning_remove_from_db_erase_all_related_rows(init_planning_db):
         assert not is_vote_in_db(ben, saturday, conn)
 
 
+# Option class tests ##########################################################
 def test_option_equality():
     """Test condition of equality between Option instancies."""
     # Option are equal if they have all their value equal
@@ -448,6 +452,7 @@ def test_option_belong_to_sequence():
     assert opt1 in [opt3, opt2, opt1]  # order doesn't matter
 
 
+# Voter class tests ###########################################################
 def test_voter_equality():
     """Test condition of equality between Voter instancies."""
     # Option are equal if they have all their value equal
