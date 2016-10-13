@@ -76,6 +76,12 @@ class LogicError(RuntimeError):
     pass
 
 
+class MultipleVoteError(LogicError):
+    """Raised when a user try to vote multiple times for the same option."""
+
+    pass
+
+
 def is_vote_in_db(voter, opt, db_conn):
     """
     Check if a vote exists in database for the voter on the option.
@@ -768,7 +774,6 @@ class Option:
                     description=self.txt,
                     nb_participant=len(self.voters))
 
-    # TODO check if a vote already exists
     # TODO add a toggle_vote_to_db that use add/remove_vote_to_db
     # TODO replace the Telepot user by Voter instance (decoupling)
     def add_vote_to_db(self, user):
@@ -776,7 +781,8 @@ class Option:
         Register the vote to this option from a user to the database.
 
         Arguments:
-            user -- telebot namedtuple User corresponding to the voter.
+            user -- telebot namedtuple User corresponding to the voter or a
+                    Voter instance.
 
         Returns:
             Voter instance representing the user that voted in the database.
@@ -785,22 +791,28 @@ class Option:
             LogicError -- if the status of the planning is not "opened".
         """
         # Preconditions
-        assert type(user) is telepot.namedtuple.User
+        assert type(user) is telepot.namedtuple.User or type(user) is Voter
         assert self._db_conn is not None
 
         # We can only vote in an opened planning
         if self.planning.status != Planning.Status.OPENED:
             raise LogicError("Planning not opened: impossible to vote.")
 
-        # TODO move this to Voter.__init__ method
-        # Insert the user to the database if not present else update its info
-        voter = Voter.create_or_update_to_db(
-            v_id=user.id,
-            first_name=user.first_name,
-            last_name=user.last_name,
-            db_conn=self._db_conn)
+        if type(user) is Voter:
+            # We simply rename the user since its already a voter
+            voter = user
+        else:
+            # TODO move this to Voter.__init__ method
+            # Insert the user to the database if not present else update it
+            voter = Voter.create_or_update_to_db(
+                v_id=user.id,
+                first_name=user.first_name,
+                last_name=user.last_name,
+                db_conn=self._db_conn)
 
-        # TODO check if we already have a vote for this option from this user
+        # Check if we already have a vote for this option from this user
+        if is_vote_in_db(voter, self, self._db_conn):
+            raise MultipleVoteError()
 
         # Register the voter in the vote table
         with closing(self._db_conn.cursor()) as c:
@@ -1015,12 +1027,12 @@ class Voter:
         Equality operator for Voter instances.
 
         Returns:
-            True if all attribute are equal (ignoring _db_conn).
-            Else in all other cases.
+            True -- if the identifier (v_id) are equal since they come from
+                    Telegram and all other fields are editable by user un
+                    Telegram UI.
+            False -- in all other cases.
         """
-        return (self.v_id == other.v_id and
-                self.first_name == other.first_name and
-                self.last_name == other.last_name)
+        return (self.v_id == other.v_id)
 
     def is_in_db(self):
         """

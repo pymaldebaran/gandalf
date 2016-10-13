@@ -19,7 +19,7 @@ from telepot.namedtuple import User
 
 # Planning module elements to test
 from planning import Planning, Option, Voter
-from planning import LogicError
+from planning import LogicError, MultipleVoteError
 from planning import is_vote_in_db
 
 
@@ -457,21 +457,27 @@ def test_add_and_remove_to_db_works(init_planning_db):
     assert is_vote_in_db(joey, women, conn)
 
 
+def test_can_not_vote_twice_for_the_same_option(init_planning_db):
+    """Ensure that a voter can not vote twice for the same option."""
+    conn = init_planning_db
+
+    # Create a first planning with some options
+    pl = Planning(None, 123, "What is the most anoying character ever?",
+                  Planning.Status.UNDER_CONSTRUCTION,
+                  db_conn=conn)
+    pl.save_to_db()
+    awful_laugh = pl.add_option("Janice")
+    pl.open()
+
+    # And now we vote
+    joey = awful_laugh.add_vote_to_db(FakeUser("Joey"))
+
+    # And try to vote again
+    with pytest.raises(MultipleVoteError):
+        _ = awful_laugh.add_vote_to_db(joey)
+
+
 # Voter class tests ###########################################################
-def test_voter_equality():
-    """Test condition of equality between Voter instancies."""
-    # Option are equal if they have all their value equal
-    v1A = Voter(v_id=123, first_name="aaa", last_name="bbb", db_conn=MagicMock)
-    v1B = Voter(v_id=123, first_name="aaa", last_name="bbb", db_conn=MagicMock)
-
-    assert v1A == v1B
-
-    # Options are different in all other case
-    assert v1A != Voter(789, "aaa", "bbb", MagicMock)
-    assert v1A != Voter(123, "ccc", "bbb", MagicMock)
-    assert v1A != Voter(123, "aaa", "ccc", MagicMock)
-
-
 def test_voter_belong_to_sequence():
     """Test condition for an Voter instance to belong to sequence."""
     # Some options
@@ -485,3 +491,30 @@ def test_voter_belong_to_sequence():
     assert v1 in [v1]
     assert v1 in [v1, v2, v3]
     assert v1 in [v3, v2, v1]  # order doesn't matter
+
+
+def test_voters_are_equal_as_long_as_they_have_the_same_id():
+    """Test condition of equality between Voter instancies."""
+    # Unique id for Chandler
+    CHANDLER_ID = 123456789
+
+    # Original
+    chandler_bing = Voter(CHANDLER_ID, "Chandler", "Bing", MagicMock)
+    # Dark secret
+    muriel_bing = Voter(CHANDLER_ID, "Muriel", "Bing", MagicMock)
+    # After wedding
+    chandler_geller = Voter(CHANDLER_ID, "Chandler", "Geller", MagicMock)
+    # When he decided to change name
+    mark_johnson = Voter(CHANDLER_ID, "Mark", "Johnson", MagicMock)
+
+    assert chandler_bing == muriel_bing
+    assert chandler_bing == chandler_geller
+    assert chandler_bing == mark_johnson
+
+    # Unique id for monica and the fake
+    MONICA_ID = 111111111
+    NOT_MONICA_ID = 666666666
+    monica_geller = Voter(MONICA_ID, "Monica", "Geller", MagicMock)
+    fake_monica = Voter(NOT_MONICA_ID, "Monica", "Geller", MagicMock)
+
+    assert monica_geller != fake_monica
