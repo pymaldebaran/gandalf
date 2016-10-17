@@ -73,19 +73,17 @@ import telepot
 class LogicError(RuntimeError):
     """Error to raise when the internal logic of gandalf is violated."""
 
-    pass
-
 
 class MultipleVoteError(LogicError):
     """Raised when a user try to vote multiple times for the same option."""
-
-    pass
 
 
 class PlanningNotOpenedError(LogicError):
     """Raised when trying to vote in a Planning that is not opened."""
 
-    pass
+
+class UnknownVoterError(LogicError):
+    """Raised when trying to retreive an unknown Voter from database."""
 
 
 def is_vote_in_db(voter, opt, db_conn):
@@ -806,9 +804,12 @@ class Option:
         if self.planning.status != Planning.Status.OPENED:
             raise PlanningNotOpenedError()
 
+        # Let's be sure to have a Voter
         if type(user) is Voter:
             # We simply rename the user since its already a voter
             voter = user
+            if not voter.is_in_db():
+                voter.save_to_db()
         else:
             # TODO move this to Voter.__init__ method
             # Insert the user to the database if not present else update it
@@ -831,22 +832,37 @@ class Option:
 
         return voter
 
-    def remove_vote_to_db(self, voter):
+    def remove_vote_to_db(self, user):
         """
         Unregister the vote to this option from a user to the database.
 
         This will aslo remove all unused voters from database.
 
         Arguments:
-            voter -- Voter instance you want to "unvote" the option.
+            user -- telebot namedtuple User corresponding to the voter or a
+                    Voter instance.
 
         Exceptions:
             PlanningNotOpenedError -- if the status of the planning is not
                                       "opened".
         """
         # Preconditions
-        assert type(voter) is Voter
+        assert type(user) is telepot.namedtuple.User or type(user) is Voter
         assert self._db_conn is not None
+
+        # Let's be sure to have a Voter
+        if type(user) is Voter:
+            # We simply rename the user since its already a voter
+            voter = user
+        else:
+            # Load the user from the database and update its info
+            voter = Voter.load_and_update_to_db(
+                v_id=user.id,
+                first_name=user.first_name,
+                last_name=user.last_name,
+                db_conn=self._db_conn)
+
+        # Test presence in DB of everything
         assert voter.is_in_db()
         assert self.is_in_db()
         assert is_vote_in_db(voter, self, self._db_conn)
@@ -1086,8 +1102,7 @@ class Voter:
         instance values to database.
         """
         # Preconditions
-        assert self.is_in_db(), "Voter can be saved in database only "\
-            "once."
+        assert self.is_in_db()
 
         # Insert the new Option to the database
         with closing(self._db_conn.cursor()) as c:
@@ -1183,3 +1198,38 @@ class Voter:
         # Let's build objects from those tuples
         return [Voter(v_id, first_name, last_name, db_conn)
                 for v_id, first_name, last_name in rows]
+
+    @staticmethod
+    def load_and_update_to_db(v_id, first_name, last_name, db_conn):
+        """
+        Get the the Voter instances by v_id from db and update its info.
+
+        Arguments:
+            v_id -- integer id of the voter (it must be in the database).
+            first_name -- string first name of the voter (can not be None or
+                          empty string).
+            last_name -- string last name of the voter (can be None or "").
+            db_conn -- connexion to the database where the Planning will be
+                       saved.
+
+        Returns:
+            The Voter instance created from the data retreived from the
+            database.
+        """
+        # Preconditions
+        assert db_conn is not None
+        assert type(v_id) is int
+        assert type(first_name) is str and bool(first_name)
+        assert type(last_name) is str or last_name is None
+
+        # Let's create a Voter instance
+        voter = Voter(v_id, first_name, last_name, db_conn)
+
+        if not voter.is_in_db():
+            # Voter doesn't exist it's an error
+            raise UnknownVoterError(v_id, first_name, last_name)
+
+        # Voter exist let's update it's info (since user can change them)
+        voter.update_to_db()
+
+        return voter

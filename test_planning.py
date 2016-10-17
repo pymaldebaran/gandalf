@@ -245,7 +245,8 @@ def test_planning_close_forbid_votes(init_planning_db):
     only_option.remove_vote_to_db(joey)
 
     # Re-vote to be able to test the unvote after closing planning
-    joey = only_option.add_vote_to_db(FakeUser("Joey"))
+    _ = only_option.add_vote_to_db(joey)
+    voters = conn.cursor().execute("""SELECT * FROM voters""").fetchall()
 
     # Close the planning
     pl.close()
