@@ -794,7 +794,9 @@ class Option:
             Voter instance representing the user that voted in the database.
 
         Exceptions:
-            LogicError -- if the status of the planning is not "opened".
+            PlanningNotOpenedError -- if the status of the planning is not
+                                      "opened".
+            MultipleVoteError -- if the vote was already in the database.
         """
         # Preconditions
         assert type(user) is telepot.namedtuple.User or type(user) is Voter
@@ -839,7 +841,8 @@ class Option:
             voter -- Voter instance you want to "unvote" the option.
 
         Exceptions:
-            LogicError -- if the status of the planning is not "opened".
+            PlanningNotOpenedError -- if the status of the planning is not
+                                      "opened".
         """
         # Preconditions
         assert type(voter) is Voter
@@ -850,7 +853,7 @@ class Option:
 
         # We can only vote in an opened planning
         if self.planning.status != Planning.Status.OPENED:
-            raise LogicError("Planning not opened: impossible to vote.")
+            raise PlanningNotOpenedError()
 
         with closing(self._db_conn.cursor()) as c:
             # Unregister the voter in the vote table
@@ -1062,7 +1065,6 @@ class Voter:
         else:
             return False
 
-    # TODO check if this actualy works with last_name = None
     def save_to_db(self):
         """Save the Voter object to the database."""
         # Preconditions

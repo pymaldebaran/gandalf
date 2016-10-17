@@ -234,16 +234,29 @@ def test_planning_close_forbid_votes(init_planning_db):
         db_conn=conn)
     pl.save_to_db()
     only_option = pl.add_option("Kathy, you know, the actress")
+
+    # Open the lanning
     pl.open()
 
     # Try to vote before closing
-    only_option.add_vote_to_db(FakeUser("Joey"))
+    joey = only_option.add_vote_to_db(FakeUser("Joey"))
 
+    # Try to unvote before closing
+    only_option.remove_vote_to_db(joey)
+
+    # Re-vote to be able to test the unvote after closing planning
+    joey = only_option.add_vote_to_db(FakeUser("Joey"))
+
+    # Close the planning
     pl.close()
 
     # Try to vote after closing
     with pytest.raises(PlanningNotOpenedError) as excinfo:
-        only_option.add_vote_to_db(User(id=246800, first_name="Chandler"))
+        only_option.add_vote_to_db(FakeUser("Chandler"))
+
+    # Try to unvote after closing
+    with pytest.raises(PlanningNotOpenedError) as excinfo:
+        only_option.remove_vote_to_db(joey)
 
 
 def test_planning_add_option_to_db_returns_option(init_planning_db):
