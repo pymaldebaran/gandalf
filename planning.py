@@ -18,12 +18,9 @@ Examples:
     ...     status=Planning.Status.UNDER_CONSTRUCTION,
     ...     db_conn=conn)
     >>> pl.save_to_db()
-    >>> pl.add_option("Monday 8PM")  # doctest: +ELLIPSIS
-    Option<opt_id=..., pl_id=..., txt='Monday 8PM', num=0>
-    >>> pl.add_option("Thursday 9PM")  # doctest: +ELLIPSIS
-    Option<opt_id=..., pl_id=..., txt='Thursday 9PM', num=1>
-    >>> pl.add_option("Saturday 11PM")  # doctest: +ELLIPSIS
-    Option<opt_id=..., pl_id=..., txt='Saturday 11PM', num=2>
+    >>> monday = pl.add_option("Monday 8PM")
+    >>> thursday = pl.add_option("Thursday 9PM")
+    >>> saturday = pl.add_option("Saturday 11PM")
     >>> print(pl.full_description())
     *Fancy diner*
     <BLANKLINE>
@@ -42,11 +39,17 @@ Examples:
     Saturday 11PM - 👥 0
     <BLANKLINE>
     👥 0 people participated so far. _Planning Opened_.
-    >>> from telepot.namedtuple import User
-    >>> pl.options[0].add_vote_to_db(User(id=123456789, first_name='Chandler'))
-    Voter<v_id=123456789, first_name='Chandler', last_name=''>
-    >>> pl.options[1].add_vote_to_db(User(id=987654321, first_name='Joey'))
-    Voter<v_id=987654321, first_name='Joey', last_name=''>
+    >>> chandler = Voter(123456789, 'Chandler', 'Bing', conn)
+    >>> joey = Voter(987654321, 'Joey', 'Tribiani', conn)
+    >>> monica = Voter(111222333, 'Monica', 'Geller', conn)
+    >>> monday.toggle_vote_to_db(chandler)
+    True
+    >>> thursday.toggle_vote_to_db(joey)
+    True
+    >>> saturday.toggle_vote_to_db(monica)
+    True
+    >>> saturday.toggle_vote_to_db(monica)
+    False
     >>> pl.close()
     >>> pl.update_to_db()
     >>> print(pl.full_description())
@@ -253,6 +256,7 @@ class Planning:
         # save the changes
         self.update_to_db()
 
+    # TODO Add test to ensure option can only be added when under construction
     def add_option(self, txt):
         """
         Add a new option to the planning and save it to database.
@@ -778,18 +782,12 @@ class Option:
                     description=self.txt,
                     nb_participant=len(self.voters))
 
-    # TODO add a toggle_vote_to_db that use add/remove_vote_to_db
-    # TODO replace the Telepot user by Voter instance (decoupling)
-    def add_vote_to_db(self, user):
+    def _add_vote_to_db(self, voter):
         """
-        Register the vote to this option from a user to the database.
+        Register the vote to this option from a voter to the database.
 
         Arguments:
-            user -- telebot namedtuple User corresponding to the voter or a
-                    Voter instance.
-
-        Returns:
-            Voter instance representing the user that voted in the database.
+            voter -- Voter instance corresponding to the voter.
 
         Exceptions:
             PlanningNotOpenedError -- if the status of the planning is not
@@ -797,29 +795,14 @@ class Option:
             MultipleVoteError -- if the vote was already in the database.
         """
         # Preconditions
-        assert type(user) is telepot.namedtuple.User or type(user) is Voter
+        assert type(voter) is Voter
         assert self._db_conn is not None
 
         # We can only vote in an opened planning
         if self.planning.status != Planning.Status.OPENED:
             raise PlanningNotOpenedError()
 
-        # Let's be sure to have a Voter
-        if type(user) is Voter:
-            # We simply rename the user since its already a voter
-            voter = user
-            if not voter.is_in_db():
-                voter.save_to_db()
-        else:
-            # TODO move this to Voter.__init__ method
-            # Insert the user to the database if not present else update it
-            voter = Voter.create_or_update_to_db(
-                v_id=user.id,
-                first_name=user.first_name,
-                last_name=user.last_name,
-                db_conn=self._db_conn)
-
-        # Check if we already have a vote for this option from this user
+        # Check if we already have a vote for this option from this voter
         if is_vote_in_db(voter, self, self._db_conn):
             raise MultipleVoteError()
 
@@ -830,37 +813,22 @@ class Option:
                 (self.opt_id, voter.v_id))
             self._db_conn.commit()
 
-        return voter
-
-    def remove_vote_to_db(self, user):
+    def _remove_vote_to_db(self, voter):
         """
-        Unregister the vote to this option from a user to the database.
+        Unregister the vote to this option from a voter to the database.
 
         This will aslo remove all unused voters from database.
 
         Arguments:
-            user -- telebot namedtuple User corresponding to the voter or a
-                    Voter instance.
+            voter -- Voter instance corresponding to the voter.
 
         Exceptions:
             PlanningNotOpenedError -- if the status of the planning is not
                                       "opened".
         """
         # Preconditions
-        assert type(user) is telepot.namedtuple.User or type(user) is Voter
+        assert type(voter) is Voter
         assert self._db_conn is not None
-
-        # Let's be sure to have a Voter
-        if type(user) is Voter:
-            # We simply rename the user since its already a voter
-            voter = user
-        else:
-            # Load the user from the database and update its info
-            voter = Voter.load_and_update_to_db(
-                v_id=user.id,
-                first_name=user.first_name,
-                last_name=user.last_name,
-                db_conn=self._db_conn)
 
         # Test presence in DB of everything
         assert voter.is_in_db()
@@ -877,8 +845,49 @@ class Option:
                 """DELETE FROM votes WHERE opt_id=? AND v_id=?""",
                 (self.opt_id, voter.v_id))
 
-        # Remove all the user associated with no vote
+        # Remove all the voter associated with no vote
         Voter.remove_all_unused_from_db(self._db_conn)
+
+    def toggle_vote_to_db(self, voter):
+        """
+        (Un)register a vote to this option from a voter to the database.
+
+        According to the presence of a vote for that option from this voter a
+        vote will be added (if no previous vote) or removed (if a vote already
+        existed).
+
+        Arguments:
+            voter -- Voter instance corresponding to the voter.
+
+        Returns:
+            True -- if a vote has been registered.
+            False -- if a vote as been unregistred.
+
+        Exceptions:
+            PlanningNotOpenedError -- if the status of the planning is not
+                                      "opened".
+        """
+        # Preconditions
+        assert type(voter) is Voter
+        assert self._db_conn is not None
+
+        # We can only vote in an opened planning
+        if self.planning.status != Planning.Status.OPENED:
+            raise PlanningNotOpenedError()
+
+        # Ensure the voter is in database
+        if not voter.is_in_db():
+            voter.save_to_db()
+
+        # Choose between vote and unvote
+        if is_vote_in_db(voter, self, self._db_conn):
+            # We have a vote, let's remove it
+            self._remove_vote_to_db(voter)
+            return False
+        else:
+            # We don't have a let's add one
+            self._add_vote_to_db(voter)
+            return True
 
     @staticmethod
     def load_from_db(db_conn, pl_id, opt_num):

@@ -18,7 +18,7 @@ from telepot.namedtuple import InputTextMessageContent
 from telepot.namedtuple import CallbackQuery
 
 # Planning entities
-from planning import Planning, Option
+from planning import Planning, Option, Voter
 
 _LOG_MSG = {
     'opening':
@@ -90,8 +90,10 @@ _CHAT_MSG = {
 _UI_MSG = {
     'publish_btn':
         'Publish planning',
-    'click_notification':
-        '👍 Your availability has been registered'
+    'click_vote_notification':
+        '👍 {first_name} you just added your vote for option #{opt_num}.',
+    'click_unvote_notification':
+        '👍 {first_name} you just removed your vote for option #{opt_num}.'
 }
 
 
@@ -543,13 +545,25 @@ class PlannerInlineHandler(
             "option. In planning <{pl_id}> trying to vote for option number "\
             "{opt_num}.".format(pl_id=pl_id, opt_num=opt_num)
 
-        # TODO use toggle_vote_to_db instead
         # Register the voter in the vote table
-        opt.add_vote_to_db(query.from_)
+        voter = Voter(
+            v_id=query.from_.id,
+            first_name=query.from_.first_name,
+            last_name=query.from_.last_name,
+            db_conn=self._conn)
+        vote = opt.toggle_vote_to_db(voter)
 
         # Edit the planning post
         # TODO put some actual code here
 
         # Show confirmation
-        self.bot.answerCallbackQuery(
-            query_id, text=_UI_MSG['click_notification'])
+        if vote:
+            self.bot.answerCallbackQuery(
+                query_id, text=_UI_MSG['click_vote_notification'].format(
+                    first_name=voter.first_name,
+                    opt_num=opt.num + 1))
+        else:
+            self.bot.answerCallbackQuery(
+                query_id, text=_UI_MSG['click_unvote_notification'].format(
+                    first_name=voter.first_name,
+                    opt_num=opt.num + 1))

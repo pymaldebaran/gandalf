@@ -517,3 +517,5 @@ def test_can_cancel_a_planning(init_planner_tester, users):
     cursor.execute("SELECT * FROM options ORDER BY txt")
     rows = cursor.fetchall()
     assert len(rows) == 0, "No option should have been created."
+
+# TODO add tests for response handling

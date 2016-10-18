@@ -14,9 +14,6 @@ from contextlib import closing
 # Used to easily analyse columns descriptions
 from collections import deque
 
-# Used to create fake users for tests
-from telepot.namedtuple import User
-
 # Planning module elements to test
 from planning import Planning, Option, Voter
 from planning import PlanningNotOpenedError, MultipleVoteError
@@ -24,11 +21,13 @@ from planning import is_vote_in_db
 
 
 # Tests helpers ###############################################################
-def FakeUser(first_name):
-    """Helper to easily build Telegram User."""
-    return User(
-        id=hash(first_name),  # KISS way to have a unique id
-        first_name=first_name)
+def FakeVoter(first_name, db_conn):
+    """Helper to easily build a Voter."""
+    return Voter(
+        v_id=hash(first_name),  # KISS way to have a unique id
+        first_name=first_name,
+        last_name=None,
+        db_conn=db_conn)
 
 
 @pytest.fixture()
@@ -184,18 +183,17 @@ def test_can_not_modify_planning_voters(init_planning_db):
     pl.open()
 
     # Let's vote !
-    pl.options[0].add_vote_to_db(FakeUser("Monica"))
-    pl.options[0].add_vote_to_db(FakeUser("Rachel"))
-    pl.options[2].add_vote_to_db(FakeUser("Phoebe"))
+    pl.options[0].toggle_vote_to_db(FakeVoter("Monica", conn))
+    pl.options[0].toggle_vote_to_db(FakeVoter("Rachel", conn))
+    pl.options[2].toggle_vote_to_db(FakeVoter("Phoebe", conn))
 
     # Test a modification of the voters
     with pytest.raises(TypeError) as excinfo:
         # trying to set the first option
-        pl.voters[2] = Voter(111111, "Ursula", "Bouffay", conn)
+        pl.voters[2] = FakeVoter("Ursula", conn)
     assert "object does not support item assignment" in str(excinfo.value)
 
 
-# TODO add same test for Option.remove_vote_to_db()
 def test_planning_open_allow_votes(init_planning_db):
     """Ensure we can not vote before planning opening but can after."""
     conn = init_planning_db
@@ -212,18 +210,63 @@ def test_planning_open_allow_votes(init_planning_db):
 
     # Try to vote before openning
     with pytest.raises(PlanningNotOpenedError) as excinfo:
-        only_option.add_vote_to_db(FakeUser("Janice"))
+        only_option.toggle_vote_to_db(FakeVoter("Janice", conn))
 
     pl.open()
 
     # Try to vote after opening
-    only_option.add_vote_to_db(FakeUser("Richard"))
+    only_option.toggle_vote_to_db(FakeVoter("Richard", conn))
 
 
-# TODO add same test for Option.remove_vote_to_db()
 def test_planning_close_forbid_votes(init_planning_db):
     """Ensure we can not vote after planning closing."""
     conn = init_planning_db
+
+    # Create a first planning with some options
+    pl = Planning(
+        pl_id=None,
+        user_id=123,
+        title="Which gorgeous girl have you met today?",
+        status=Planning.Status.UNDER_CONSTRUCTION,
+        db_conn=conn)
+    pl.save_to_db()
+    only_option = pl.add_option("Kathy, you know, the actress")
+
+    # Create some voters
+    joey = FakeVoter("Joey", conn)
+    chandler = FakeVoter("Chandler", conn)
+
+    # Open the lanning
+    pl.open()
+
+    # Try to vote before closing
+    assert only_option.toggle_vote_to_db(joey)
+
+    # Try to unvote before closing
+    assert not only_option.toggle_vote_to_db(joey)
+
+    # Re-vote to be able to test the unvote after closing planning
+    assert only_option.toggle_vote_to_db(joey)
+
+    # Close the planning
+    pl.close()
+
+    # Try to vote after closing
+    with pytest.raises(PlanningNotOpenedError) as excinfo:
+        only_option.toggle_vote_to_db(chandler)
+
+    # Try to unvote after closing
+    with pytest.raises(PlanningNotOpenedError) as excinfo:
+        only_option.toggle_vote_to_db(joey)
+
+
+def test_planning_close_forbid_toggle_votes(init_planning_db):
+    """Ensure we can not vote after planning closing."""
+    conn = init_planning_db
+
+    # Create voters
+    joey = FakeVoter("Joey", conn)
+    chandler = FakeVoter("Chandler", conn)
 
     # Create a first planning with some options
     pl = Planning(
@@ -239,25 +282,24 @@ def test_planning_close_forbid_votes(init_planning_db):
     pl.open()
 
     # Try to vote before closing
-    joey = only_option.add_vote_to_db(FakeUser("Joey"))
+    assert only_option.toggle_vote_to_db(joey)
 
     # Try to unvote before closing
-    only_option.remove_vote_to_db(joey)
+    assert not only_option.toggle_vote_to_db(joey)
 
     # Re-vote to be able to test the unvote after closing planning
-    _ = only_option.add_vote_to_db(joey)
-    voters = conn.cursor().execute("""SELECT * FROM voters""").fetchall()
+    assert only_option.toggle_vote_to_db(joey)
 
     # Close the planning
     pl.close()
 
     # Try to vote after closing
     with pytest.raises(PlanningNotOpenedError) as excinfo:
-        only_option.add_vote_to_db(FakeUser("Chandler"))
+        only_option.toggle_vote_to_db(chandler)
 
     # Try to unvote after closing
     with pytest.raises(PlanningNotOpenedError) as excinfo:
-        only_option.remove_vote_to_db(joey)
+        only_option.toggle_vote_to_db(joey)
 
 
 def test_planning_add_option_to_db_returns_option(init_planning_db):
@@ -291,6 +333,15 @@ def test_planning_remove_from_db_erase_all_related_rows(init_planning_db):
     """Ensure that all the options, voters and votes are removed from db."""
     conn = init_planning_db
 
+    # Create some voters
+    monica = FakeVoter("Monica", conn)
+    rachel = FakeVoter("Rachel", conn)
+    phoebe = FakeVoter("Phoebe", conn)
+    ben = FakeVoter("Ben", conn)
+    joey = FakeVoter("Joey", conn)
+    chandler = FakeVoter("Chandler", conn)
+    ross = FakeVoter("Ross", conn)
+
     # Create a first planning with some options
     pl_girl = Planning(
         pl_id=None,
@@ -304,10 +355,10 @@ def test_planning_remove_from_db_erase_all_related_rows(init_planning_db):
     wednesday = pl_girl.add_option("Wednesday")
     pl_girl.open()
     # Let's vote
-    monica = monday.add_vote_to_db(FakeUser("Monica"))
-    rachel = monday.add_vote_to_db(FakeUser("Rachel"))
-    phoebe = wednesday.add_vote_to_db(FakeUser("Phoebe"))
-    ben = tuesday.add_vote_to_db(FakeUser("Ben"))
+    monday.toggle_vote_to_db(monica)
+    monday.toggle_vote_to_db(rachel)
+    wednesday.toggle_vote_to_db(phoebe)
+    tuesday.toggle_vote_to_db(ben)
 
     # Create a second planning...
     pl_dude = Planning(
@@ -322,10 +373,10 @@ def test_planning_remove_from_db_erase_all_related_rows(init_planning_db):
     sunday = pl_dude.add_option("Sunday")
     pl_dude.open()
     # Let's vote
-    joey = friday.add_vote_to_db(FakeUser("Joey"))
-    chandler = friday.add_vote_to_db(FakeUser("Chandler"))
-    ross = sunday.add_vote_to_db(FakeUser("Ross"))
-    _ = saturday.add_vote_to_db(FakeUser("Ben"))  # Ben already voted
+    friday.toggle_vote_to_db(joey)
+    friday.toggle_vote_to_db(chandler)
+    sunday.toggle_vote_to_db(ross)
+    saturday.toggle_vote_to_db(ben)
 
     # And we delete a planning
     pl_dude.remove_from_db()
@@ -396,39 +447,14 @@ def test_option_belong_to_sequence():
     assert opt1 in [opt3, opt2, opt1]  # order doesn't matter
 
 
-def test_option_add_vote_to_db_returns_voter(init_planning_db):
-    """Test if add_vote_to_db() method returns the correct voter."""
-    conn = init_planning_db
-
-    # Create a planning with some options
-    pl = Planning(
-        pl_id=None,
-        user_id=123,
-        title="Who wants the rooster out?",
-        status=Planning.Status.UNDER_CONSTRUCTION,
-        db_conn=conn)
-    pl.save_to_db()
-    only_option = pl.add_option("I want!")
-    pl.open()
-    # And now we vote
-    monica = only_option.add_vote_to_db(FakeUser("Monica"))
-    rachel = only_option.add_vote_to_db(FakeUser("Rachel"))
-
-    # Tests the users
-    assert monica is not None
-    assert rachel is not None
-
-    assert monica.is_in_db()
-    assert rachel.is_in_db()
-
-    assert len(pl.voters) == 2
-    assert monica in pl.voters
-    assert rachel in pl.voters
-
-
 def test_add_and_remove_to_db_works(init_planning_db):
     """Ensure that Planning.is_vote_in_db() works correctly."""
     conn = init_planning_db
+
+    # Create some voters
+    monica = FakeVoter("Monica", conn)
+    rachel = FakeVoter("Rachel", conn)
+    joey = FakeVoter("Joey", conn)
 
     # Create a first planning with some options
     pl = Planning(None, 123, "Who wants the rooster out?",
@@ -438,8 +464,8 @@ def test_add_and_remove_to_db_works(init_planning_db):
     want = pl.add_option("I want!")
     pl.open()
     # And now we vote
-    monica = want.add_vote_to_db(FakeUser("Monica"))
-    rachel = want.add_vote_to_db(FakeUser("Rachel"))
+    assert want.toggle_vote_to_db(monica)
+    assert want.toggle_vote_to_db(rachel)
 
     # Create a second planning with some options
     pl = Planning(
@@ -453,8 +479,8 @@ def test_add_and_remove_to_db_works(init_planning_db):
     women = pl.add_option("Women")
     pl.open()
     # And now we vote
-    joey = jam.add_vote_to_db(FakeUser("Joey"))
-    joey = women.add_vote_to_db(FakeUser("Joey"))
+    assert jam.toggle_vote_to_db(joey)
+    assert women.toggle_vote_to_db(joey)
 
     # Test the presence of votes
     assert is_vote_in_db(monica, want, conn)
@@ -466,7 +492,9 @@ def test_add_and_remove_to_db_works(init_planning_db):
     assert not is_vote_in_db(rachel, jam, conn)
 
     # Lets's change our mind !
-    jam.remove_vote_to_db(joey)
+    assert not jam.toggle_vote_to_db(joey)
+
+    # And test the results
     assert not is_vote_in_db(joey, jam, conn)
     assert is_vote_in_db(joey, women, conn)
 
@@ -474,6 +502,9 @@ def test_add_and_remove_to_db_works(init_planning_db):
 def test_can_not_vote_twice_for_the_same_option(init_planning_db):
     """Ensure that a voter can not vote twice for the same option."""
     conn = init_planning_db
+
+    # Create voter
+    joey = FakeVoter("Joey", conn)
 
     # Create a first planning with some options
     pl = Planning(None, 123, "What is the most anoying character ever?",
@@ -484,11 +515,11 @@ def test_can_not_vote_twice_for_the_same_option(init_planning_db):
     pl.open()
 
     # And now we vote
-    joey = awful_laugh.add_vote_to_db(FakeUser("Joey"))
+    awful_laugh._add_vote_to_db(joey)
 
     # And try to vote again
     with pytest.raises(MultipleVoteError):
-        _ = awful_laugh.add_vote_to_db(joey)
+        awful_laugh._add_vote_to_db(joey)
 
 
 # Voter class tests ###########################################################
